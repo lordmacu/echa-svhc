@@ -1,0 +1,88 @@
+name: Build desktop
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+env:
+  FLUTTER_VERSION: '3.38.3'
+
+jobs:
+  # ---------- Windows: .exe portable (carpeta Release zippeada) ----------
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: flutter config --enable-windows-desktop
+      - run: flutter pub get
+      - run: flutter build windows --release
+
+      # La app portable es toda la carpeta Release (exe + DLLs + data).
+      - name: Empaquetar portable (zip)
+        shell: pwsh
+        run: |
+          $src = "build/windows/x64/runner/Release"
+          Compress-Archive -Path "$src/*" -DestinationPath "echa_svhc-windows-portable.zip" -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: echa_svhc-windows-portable
+          path: echa_svhc-windows-portable.zip
+
+      - name: Adjuntar al release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: echa_svhc-windows-portable.zip
+
+  # ---------- macOS: .dmg ----------
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: flutter config --enable-macos-desktop
+      - run: flutter pub get
+      - run: flutter build macos --release
+
+      - name: Crear DMG
+        run: |
+          brew install create-dmg
+          APP="build/macos/Build/Products/Release/echa_svhc.app"
+          mkdir -p dist
+          create-dmg \
+            --volname "ECHA SVHC" \
+            --window-size 540 380 \
+            --icon-size 110 \
+            --icon "echa_svhc.app" 150 180 \
+            --app-drop-link 390 180 \
+            --no-internet-enable \
+            "dist/echa_svhc-macos.dmg" \
+            "$APP" \
+          || hdiutil create -volname "ECHA SVHC" -srcfolder "$APP" -ov -format UDZO "dist/echa_svhc-macos.dmg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: echa_svhc-macos-dmg
+          path: dist/echa_svhc-macos.dmg
+
+      - name: Adjuntar al release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/echa_svhc-macos.dmg
