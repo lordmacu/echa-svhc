@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import 'cas_importer.dart';
 import 'cas_utils.dart';
@@ -55,27 +54,24 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
-  /// Extrae CAS completos del texto y los convierte en chips, dejando en el
-  /// campo cualquier fragmento aún incompleto que el usuario siga escribiendo.
+  /// Detecta los CAS dentro del texto (que puede ser prosa con CAS embebidos),
+  /// los convierte en chips sin duplicar, y los elimina del campo dejando el
+  /// resto del texto. Así pegar un párrafo extrae los CAS automáticamente.
   void _onChanged(String text) {
-    final matches = CasUtils.pattern.allMatches(text).toList();
-    if (matches.isEmpty) return;
+    final found = CasUtils.extractAll(text);
+    if (found.isEmpty) return;
 
-    var added = false;
-    for (final m in matches) {
-      final cas = m.group(0)!;
-      if (!_casList.contains(cas)) {
-        _casList.add(cas);
-        added = true;
-      }
-    }
+    final added = _addCas(found);
 
-    final remainder = text.substring(matches.last.end);
+    // Quita los CAS ya detectados del campo y colapsa espacios sobrantes.
+    final stripped = text
+        .replaceAll(CasUtils.pattern, ' ')
+        .replaceAll(RegExp(r'[ \t]{2,}'), ' ');
     _controller.value = TextEditingValue(
-      text: remainder,
-      selection: TextSelection.collapsed(offset: remainder.length),
+      text: stripped,
+      selection: TextSelection.collapsed(offset: stripped.length),
     );
-    if (added) setState(() {});
+    if (added > 0) setState(() {});
   }
 
   void _addFromField() {
@@ -151,6 +147,8 @@ class _HomePageState extends State<HomePage> {
       },
     );
 
+    // Una vez procesados, se limpia el campo de texto.
+    _controller.clear();
     setState(() {
       _running = false;
       _currentIndex = -1;
@@ -210,10 +208,6 @@ class _HomePageState extends State<HomePage> {
             enabled: !_running,
             onChanged: _onChanged,
             onSubmitted: (_) => _addFromField(),
-            inputFormatters: [
-              // permite dígitos, guiones y separadores; bloquea letras.
-              FilteringTextInputFormatter.allow(RegExp(r'[\d\s,;\-\n\t]')),
-            ],
             decoration: const InputDecoration(
               border: OutlineInputBorder(),
               hintText: '110-54-3, 50-00-0 …',
