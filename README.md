@@ -26,6 +26,7 @@ En Windows, descomprime el `.zip` y ejecuta `echa_svhc.exe` (no requiere instala
 ## Características
 
 - **Detección automática de formato CAS** (`2–7 dígitos - 2 dígitos - 1 dígito`) en texto pegado.
+- **Importar desde archivo**: carga un `.csv`, `.txt`, `.xlsx` o `.xls` y extrae automáticamente todos los CAS (de cualquier columna/hoja).
 - Entrada por **chips**: agrega, valida el dígito de control y elimina CAS fácilmente.
 - Consulta **secuencial** (uno por uno) con barra de progreso.
 - Por cada CAS:

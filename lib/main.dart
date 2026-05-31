@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'cas_importer.dart';
 import 'cas_utils.dart';
 import 'echa_service.dart';
 
@@ -78,16 +79,41 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _addFromField() {
-    final cas = CasUtils.extractAll(_controller.text);
-    var added = false;
+    final added = _addCas(CasUtils.extractAll(_controller.text));
+    _controller.clear();
+    if (added > 0) setState(() {});
+  }
+
+  /// Agrega CAS evitando duplicados. Devuelve cuántos se agregaron.
+  int _addCas(Iterable<String> cas) {
+    var added = 0;
     for (final c in cas) {
       if (!_casList.contains(c)) {
         _casList.add(c);
-        added = true;
+        added++;
       }
     }
-    _controller.clear();
-    if (added) setState(() {});
+    return added;
+  }
+
+  Future<void> _importFile() async {
+    try {
+      final result = await CasImporter.pickAndExtract();
+      if (result == null) return; // cancelado
+      final added = _addCas(result.cas);
+      setState(() {});
+      if (!mounted) return;
+      final msg = result.cas.isEmpty
+          ? 'No se encontraron CAS en "${result.fileName}".'
+          : '${result.fileName}: ${result.cas.length} CAS detectados, '
+              '$added nuevos agregados.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al importar: $e')),
+      );
+    }
   }
 
   void _removeChip(String cas) {
@@ -196,9 +222,19 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         const SizedBox(width: 8),
-        FilledButton.tonal(
-          onPressed: _running ? null : _addFromField,
-          child: const Text('Agregar'),
+        Column(
+          children: [
+            FilledButton.tonal(
+              onPressed: _running ? null : _addFromField,
+              child: const Text('Agregar'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _running ? null : _importFile,
+              icon: const Icon(Icons.upload_file, size: 18),
+              label: const Text('Importar CSV/Excel'),
+            ),
+          ],
         ),
       ],
     );
