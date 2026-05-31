@@ -11,6 +11,16 @@ en la Candidate List, mostrando nombre, EC number, fecha de inclusión y motivo
 
 ![estado](https://github.com/lordmacu/echa-svhc/actions/workflows/build.yml/badge.svg)
 
+## Descargas
+
+| Plataforma | Descarga |
+|---|---|
+| 🍎 **macOS** | [echa_svhc-macos.dmg](https://github.com/lordmacu/echa-svhc/releases/latest/download/echa_svhc-macos.dmg) |
+| 🪟 **Windows** (portable) | [echa_svhc-windows-portable.zip](https://github.com/lordmacu/echa-svhc/releases/latest/download/echa_svhc-windows-portable.zip) |
+
+Los enlaces apuntan siempre al [último release](https://github.com/lordmacu/echa-svhc/releases/latest).
+En Windows, descomprime el `.zip` y ejecuta `echa_svhc.exe` (no requiere instalación).
+
 ---
 
 ## Características
