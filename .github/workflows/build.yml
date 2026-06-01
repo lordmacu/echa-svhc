@@ -44,9 +44,10 @@ jobs:
           if ($env:GITHUB_REF -like "refs/tags/v*") {
             $ver = $env:GITHUB_REF -replace "refs/tags/v",""
           }
+          $rel = Join-Path $PWD "build\windows\x64\runner\Release"
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
             "/DAppVersion=$ver" `
-            "/DSourceDir=build\windows\x64\runner\Release" `
+            "/DSourceDir=$rel" `
             "windows\installer.iss"
           Copy-Item "windows\installer-out\echa_svhc-windows-setup.exe" `
             -Destination "echa_svhc-windows-setup.exe"
