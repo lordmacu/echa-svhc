@@ -106,19 +106,19 @@ class _HomePageState extends State<HomePage> {
   Future<void> _importFile() async {
     try {
       final result = await CasImporter.pickAndExtract();
-      if (result == null) return; // cancelado
+      if (result == null) return; // cancelled
       final added = _addCas(result.cas);
       setState(() {});
       if (!mounted) return;
       final msg = result.cas.isEmpty
-          ? 'No se encontraron CAS en "${result.fileName}".'
-          : '${result.fileName}: ${result.cas.length} CAS detectados, '
-              '$added nuevos agregados.';
+          ? 'No CAS found in "${result.fileName}".'
+          : '${result.fileName}: ${result.cas.length} CAS detected, '
+              '$added new added.';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al importar: $e')),
+        SnackBar(content: Text('Import error: $e')),
       );
     }
   }
@@ -144,13 +144,13 @@ class _HomePageState extends State<HomePage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(path == null
-            ? 'Exportación cancelada.'
-            : 'Guardado en: $path'),
+            ? 'Export cancelled.'
+            : 'Saved to: $path'),
       ));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Error al exportar: $e')));
+          .showSnackBar(SnackBar(content: Text('Export error: $e')));
     }
   }
 
@@ -195,7 +195,7 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ECHA — SVHC + Annex XIV + XVII por CAS'),
+        title: const Text('Regulatory lookup by CAS number'),
         backgroundColor: theme.colorScheme.inversePrimary,
       ),
       body: Padding(
@@ -204,10 +204,9 @@ class _HomePageState extends State<HomePage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Pega uno o varios números CAS (se detectan automáticamente). '
-              'Se consultan 7 fuentes: ECHA (Candidate List, Annex XIV '
-              'nuevo/legado, Annex XVII) y US (California Prop 65, TSCA, '
-              'EPA HAP). Ej: 110-54-3',
+              'Paste one or more CAS numbers (detected automatically). '
+              'Checked against 22 regulatory lists worldwide (ECHA, US EPA, '
+              'Japan, Canada and more). E.g. 110-54-3',
               style: theme.textTheme.bodyMedium,
             ),
             const SizedBox(height: 12),
@@ -248,7 +247,7 @@ class _HomePageState extends State<HomePage> {
             decoration: const InputDecoration(
               border: OutlineInputBorder(),
               hintText: '110-54-3, 50-00-0 …',
-              labelText: 'Números CAS',
+              labelText: 'CAS numbers',
             ),
           ),
         ),
@@ -257,13 +256,13 @@ class _HomePageState extends State<HomePage> {
           children: [
             FilledButton.tonal(
               onPressed: _running ? null : _addFromField,
-              child: const Text('Agregar'),
+              child: const Text('Add'),
             ),
             const SizedBox(height: 8),
             OutlinedButton.icon(
               onPressed: _running ? null : _importFile,
               icon: const Icon(Icons.upload_file, size: 18),
-              label: const Text('Importar CSV/Excel'),
+              label: const Text('Import CSV/Excel'),
             ),
           ],
         ),
@@ -335,7 +334,7 @@ class _HomePageState extends State<HomePage> {
     return Padding(
       padding: const EdgeInsets.only(top: 6),
       child: Text(
-        'Los filtros Reason/Date solo aplican a la Candidate List.',
+        'Reason/Date filters only apply to the Candidate List.',
         style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
       ),
     );
@@ -353,7 +352,7 @@ class _HomePageState extends State<HomePage> {
           label: Text(cas),
           backgroundColor: valid ? null : theme.colorScheme.errorContainer,
           onDeleted: _running ? null : () => _removeChip(cas),
-          tooltip: valid ? null : 'Dígito de control no válido (¿errata?)',
+          tooltip: valid ? null : 'Invalid check digit (typo?)',
         );
       }).toList(),
     );
@@ -385,20 +384,20 @@ class _HomePageState extends State<HomePage> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.search),
-          label: Text(_running ? 'Consultando $done/$total…' : 'Consultar'),
+          label: Text(_running ? 'Querying $done/$total…' : 'Check'),
         ),
         const SizedBox(width: 12),
         OutlinedButton.icon(
           onPressed: (_running || _casList.isEmpty) ? null : _clearAll,
           icon: const Icon(Icons.clear_all),
-          label: const Text('Limpiar'),
+          label: const Text('Clear'),
         ),
         const SizedBox(width: 12),
         OutlinedButton.icon(
           onPressed:
               (_running || _results.isEmpty) ? null : _exportExcel,
           icon: const Icon(Icons.file_download),
-          label: const Text('Exportar a Excel'),
+          label: const Text('Export to Excel'),
         ),
         const Spacer(),
         if (total > 0)
@@ -411,7 +410,7 @@ class _HomePageState extends State<HomePage> {
     if (_casList.isEmpty) {
       return Center(
         child: Text(
-          'Agrega CAS y pulsa Consultar.',
+          'Add CAS numbers and press Check.',
           style: theme.textTheme.bodyMedium
               ?.copyWith(color: theme.disabledColor),
         ),
@@ -475,7 +474,7 @@ class _ResultHeader extends StatelessWidget {
         children: [
           SizedBox(width: _kCasWidth, child: Text('CAS', style: style)),
           for (final s in EchaSource.values) cell(s.shortLabel, _kSourceWidth),
-          SizedBox(width: _kNameWidth, child: Text('Nombre', style: style)),
+          SizedBox(width: _kNameWidth, child: Text('Name', style: style)),
         ],
       ),
     );
@@ -597,7 +596,7 @@ class _ResultRowState extends State<_ResultRow> {
 
   String _detailSummary() {
     final r = widget.report;
-    if (r == null) return widget.isCurrent ? 'Consultando…' : 'En cola';
+    if (r == null) return widget.isCurrent ? 'Querying…' : 'Queued';
     final name = r[EchaSource.candidate]?.name ??
         r[EchaSource.authNew]?.name ??
         r[EchaSource.authLegacy]?.name ??
@@ -607,8 +606,8 @@ class _ResultRowState extends State<_ResultRow> {
         .where((s) => r[s]?.status == EchaStatus.listed)
         .map((s) => s.shortLabel)
         .toList();
-    if (inLists.isEmpty) return name ?? 'No aparece en ninguna lista';
-    return '${name ?? ''} — en: ${inLists.join(", ")}';
+    if (inLists.isEmpty) return name ?? 'Not in any list';
+    return '${name ?? ''} — in: ${inLists.join(", ")}';
   }
 }
 
@@ -623,24 +622,24 @@ class _SourceDetail extends StatelessWidget {
     final r = result;
 
     final (IconData ico, Color col, String estado) = switch (r.status) {
-      EchaStatus.listed => (Icons.check_circle, Colors.green, 'EN LA LISTA'),
+      EchaStatus.listed => (Icons.check_circle, Colors.green, 'LISTED'),
       EchaStatus.notListed =>
-        (Icons.remove_circle_outline, theme.disabledColor, 'No está'),
+        (Icons.remove_circle_outline, theme.disabledColor, 'Not listed'),
       EchaStatus.error => (Icons.error_outline, Colors.orange, 'Error'),
     };
 
     final lines = <String>[
-      if (r.name != null) 'Nombre: ${r.name}',
+      if (r.name != null) 'Name: ${r.name}',
       if (r.ecNumber != null) 'EC: ${r.ecNumber}',
       // Candidate List:
-      if (r.inclusionDate != null) 'Inclusión: ${r.inclusionDate}',
-      if (r.decisionNumber != null) 'Decisión: ${r.decisionNumber}',
+      if (r.inclusionDate != null) 'Inclusion: ${r.inclusionDate}',
+      if (r.decisionNumber != null) 'Decision: ${r.decisionNumber}',
       // Annex XIV:
       if (r.entryNumber != null) 'Entry: ${r.entryNumber}',
       if (r.latestApplicationDate != null)
         'Latest application: ${r.latestApplicationDate}',
       if (r.sunsetDate != null) 'Sunset date: ${r.sunsetDate}',
-      if (r.reason != null) 'Motivo/propiedad: ${r.reason}',
+      if (r.reason != null) 'Reason/property: ${r.reason}',
       if (r.status == EchaStatus.error && r.error != null) r.error!,
     ];
 
@@ -713,7 +712,7 @@ class _DateField extends StatelessWidget {
               : IconButton(
                   icon: const Icon(Icons.clear, size: 18),
                   onPressed: enabled ? () => onPick(null) : null,
-                  tooltip: 'Limpiar',
+                  tooltip: 'Clear',
                 ),
         ),
         child: Text(

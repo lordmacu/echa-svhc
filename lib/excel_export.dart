@@ -80,8 +80,8 @@ class ExcelExport {
 
     // Diálogo de guardado.
     final path = await FilePicker.platform.saveFile(
-      dialogTitle: 'Guardar resultados como Excel',
-      fileName: 'echa_resultados.xlsx',
+      dialogTitle: 'Save results as Excel',
+      fileName: 'cas_results.xlsx',
       type: FileType.custom,
       allowedExtensions: ['xlsx'],
       bytes: Uint8List.fromList(bytes),

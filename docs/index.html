@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ECHA — Consulta regulatoria por número CAS</title>
-<meta name="description" content="App de escritorio (macOS y Windows) que verifica un número CAS contra 22 listas e inventarios regulatorios de químicos en todo el mundo.">
+<title>ECHA — Regulatory lookup by CAS number</title>
+<meta name="description" content="Desktop app (macOS and Windows) that checks a CAS number against 22 regulatory chemical lists and inventories worldwide.">
 <style>
   :root{
     --bg:#0f1724; --panel:#16213a; --ink:#e8eef7; --muted:#9fb0c9;
@@ -52,58 +52,58 @@
 
 <header>
   <div class="wrap hero">
-    <div class="badge">● 22 listas regulatorias · macOS &amp; Windows</div>
-    <h1>Consulta regulatoria por número CAS</h1>
-    <p class="lead">Pega uno o varios números CAS y verifica al instante en qué
-      listas e inventarios de químicos del mundo aparece cada sustancia.
-      Resultados en una tabla comparativa exportable a Excel.</p>
+    <div class="badge">● 22 regulatory lists · macOS &amp; Windows</div>
+    <h1>Regulatory lookup by CAS number</h1>
+    <p class="lead">Paste one or more CAS numbers and instantly check which
+      chemical lists and inventories worldwide each substance appears in.
+      Results in a comparative table, exportable to Excel.</p>
     <div class="cta">
-      <a class="btn btn-primary" href="https://github.com/lordmacu/echa-svhc/releases/latest/download/echa_svhc-macos.dmg">🍎 Descargar para macOS</a>
-      <a class="btn btn-primary" href="https://github.com/lordmacu/echa-svhc/releases/latest/download/echa_svhc-windows-portable.zip">🪟 Descargar para Windows</a>
-      <a class="btn btn-ghost" href="https://github.com/lordmacu/echa-svhc">Ver en GitHub</a>
+      <a class="btn btn-primary" href="https://github.com/lordmacu/echa-svhc/releases/latest/download/echa_svhc-macos.dmg">🍎 Download for macOS</a>
+      <a class="btn btn-primary" href="https://github.com/lordmacu/echa-svhc/releases/latest/download/echa_svhc-windows-setup.exe">🪟 Download for Windows</a>
+      <a class="btn btn-ghost" href="https://github.com/lordmacu/echa-svhc">View on GitHub</a>
     </div>
-    <div class="shot"><img src="screenshot.png" alt="Captura de la aplicación mostrando la tabla de resultados por CAS"></div>
+    <div class="shot"><img src="screenshot.png" alt="Application screenshot showing the per-CAS results table"></div>
   </div>
 </header>
 
 <section>
   <div class="wrap">
-    <h2>Características</h2>
+    <h2>Features</h2>
     <div class="grid">
-      <div class="card"><h3>Detección automática de CAS</h3><p>Pega texto o prosa: detecta los números CAS y los convierte en chips, sin duplicados.</p></div>
-      <div class="card"><h3>Importar CSV / Excel</h3><p>Carga un archivo y extrae todos los CAS de cualquier columna u hoja.</p></div>
-      <div class="card"><h3>Tabla comparativa</h3><p>Una fila por CAS, una columna por lista (✓ / – / ⚠). Cada fila se expande con el detalle de cada fuente.</p></div>
-      <div class="card"><h3>Exportar a Excel</h3><p>Genera un <code>.xlsx</code> con Sí/No por lista más columnas de detalle (fecha de inclusión, sunset date, motivo…).</p></div>
-      <div class="card"><h3>Consultas en paralelo</h3><p>Las fuentes se consultan simultáneamente por host, respetando el límite de cada servidor.</p></div>
-      <div class="card"><h3>Sin instalación en Windows</h3><p>Versión portable: descomprime y ejecuta. En macOS, un <code>.dmg</code> estándar.</p></div>
+      <div class="card"><h3>Automatic CAS detection</h3><p>Paste text or prose: CAS numbers are detected and turned into chips, with no duplicates.</p></div>
+      <div class="card"><h3>Import CSV / Excel</h3><p>Load a file and extract every CAS from any column or sheet.</p></div>
+      <div class="card"><h3>Comparative table</h3><p>One row per CAS, one column per list (✓ / – / ⚠). Each row expands to show the details of every source.</p></div>
+      <div class="card"><h3>Export to Excel</h3><p>Generates an <code>.xlsx</code> with Yes/No per list plus detail columns (inclusion date, sunset date, reason…).</p></div>
+      <div class="card"><h3>Parallel lookups</h3><p>Sources are queried concurrently per host, respecting each server's rate limits.</p></div>
+      <div class="card"><h3>Installer &amp; portable</h3><p>Windows installer or portable ZIP; standard <code>.dmg</code> on macOS.</p></div>
     </div>
   </div>
 </section>
 
 <section>
   <div class="wrap">
-    <h2><span class="count">22</span> &nbsp;listas e inventarios</h2>
+    <h2><span class="count">22</span> &nbsp;lists &amp; inventories</h2>
     <div class="regions">
-      <div class="region"><h3>🇪🇺 Unión Europea (ECHA)</h3><ul>
+      <div class="region"><h3>🇪🇺 European Union (ECHA)</h3><ul>
         <li>Candidate List (SVHC)</li>
-        <li>Annex XIV — Authorisation (nuevo)</li>
-        <li>Annex XIV — Authorisation (legado)</li>
+        <li>Annex XIV — Authorisation (new)</li>
+        <li>Annex XIV — Authorisation (legacy)</li>
         <li>Annex XVII — Restriction</li>
         <li>EU REACH Registered</li></ul></div>
-      <div class="region"><h3>🇺🇸 Estados Unidos</h3><ul>
+      <div class="region"><h3>🇺🇸 United States</h3><ul>
         <li>California Proposition 65</li>
         <li>TSCA Inventory</li>
         <li>EPA Hazardous Air Pollutants</li>
         <li>TSCA SNUR</li>
         <li>TSCA § 5(e) Consent Order</li></ul></div>
-      <div class="region"><h3>🇯🇵 Japón</h3><ul>
+      <div class="region"><h3>🇯🇵 Japan</h3><ul>
         <li>PDSCL — Poison (毒物)</li>
         <li>PDSCL — Deleterious (劇物)</li>
         <li>ENCS</li></ul></div>
-      <div class="region"><h3>🇨🇦 Canadá</h3><ul>
+      <div class="region"><h3>🇨🇦 Canada</h3><ul>
         <li>Domestic Substances List (DSL)</li>
         <li>Non-domestic Substances List (NDSL)</li></ul></div>
-      <div class="region"><h3>🌏 Asia-Pacífico y más</h3><ul>
+      <div class="region"><h3>🌏 Asia-Pacific &amp; more</h3><ul>
         <li>🇨🇳 China IECSC</li>
         <li>🇰🇷 Korea KECL</li>
         <li>🇹🇼 Taiwan TCSI</li>
@@ -112,16 +112,16 @@
         <li>🇳🇿 New Zealand NZIoC</li>
         <li>🇹🇷 Turkey KKDIK</li></ul></div>
     </div>
-    <div class="note">⚠️ Herramienta de <em>screening</em>: no sustituye la verificación
-      oficial en las fuentes regulatorias. Algunas listas (p. ej. sustancias
-      confidenciales bajo TSCA) no son consultables por CAS público.</div>
+    <div class="note">⚠️ This is a <em>screening</em> tool: it does not replace official
+      verification against the regulatory sources. Some lists (e.g. confidential
+      substances under TSCA) are not searchable by public CAS number.</div>
   </div>
 </section>
 
 <footer>
   <div class="wrap">
-    Proyecto de código abierto · <a href="https://github.com/lordmacu/echa-svhc">github.com/lordmacu/echa-svhc</a><br>
-    Construido con Flutter · Datos de ECHA, US EPA, NIHS Japón, ECCC Canadá y ChemRadar.
+    Open-source project · <a href="https://github.com/lordmacu/echa-svhc">github.com/lordmacu/echa-svhc</a><br>
+    Built with Flutter · Data from ECHA, US EPA, NIHS Japan, ECCC Canada and ChemRadar.
   </div>
 </footer>
 

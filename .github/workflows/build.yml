@@ -36,16 +36,38 @@ jobs:
           $src = "build/windows/x64/runner/Release"
           Compress-Archive -Path "$src/*" -DestinationPath "echa_svhc-windows-portable.zip" -Force
 
+      # Instalador con Inno Setup (preinstalado en windows-latest).
+      - name: Construir instalador (Inno Setup)
+        shell: pwsh
+        run: |
+          $ver = "1.0.0"
+          if ($env:GITHUB_REF -like "refs/tags/v*") {
+            $ver = $env:GITHUB_REF -replace "refs/tags/v",""
+          }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
+            "/DAppVersion=$ver" `
+            "/DSourceDir=build\windows\x64\runner\Release" `
+            "windows\installer.iss"
+          Copy-Item "windows\installer-out\echa_svhc-windows-setup.exe" `
+            -Destination "echa_svhc-windows-setup.exe"
+
       - uses: actions/upload-artifact@v4
         with:
           name: echa_svhc-windows-portable
           path: echa_svhc-windows-portable.zip
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: echa_svhc-windows-setup
+          path: echa_svhc-windows-setup.exe
+
       - name: Adjuntar al release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: echa_svhc-windows-portable.zip
+          files: |
+            echa_svhc-windows-portable.zip
+            echa_svhc-windows-setup.exe
 
   # ---------- macOS: .dmg ----------
   macos:

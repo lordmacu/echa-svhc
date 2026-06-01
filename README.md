@@ -1,104 +1,105 @@
-# ECHA — Consulta regulatoria por número CAS
+# ECHA — Regulatory lookup by CAS number
 
-App de escritorio (**macOS** y **Windows**) que, dado uno o varios números **CAS**,
-verifica la presencia de cada sustancia en **22 listas e inventarios regulatorios**
-de todo el mundo, y muestra el resultado en una tabla comparativa exportable a Excel.
+Desktop app (**macOS** and **Windows**) that, given one or more **CAS** numbers,
+checks whether each substance appears in **22 regulatory lists and inventories**
+worldwide, and shows the result in a comparative table that can be exported to Excel.
 
-![estado](https://github.com/lordmacu/echa-svhc/actions/workflows/build.yml/badge.svg)
+![build](https://github.com/lordmacu/echa-svhc/actions/workflows/build.yml/badge.svg)
 
-![Captura de la aplicación](docs/screenshot.png)
+![Application screenshot](docs/screenshot.png)
 
-🌐 **Página del proyecto:** https://lordmacu.github.io/echa-svhc/
+🌐 **Project page:** https://lordmacu.github.io/echa-svhc/
 
 ---
 
-## Descargas
+## Downloads
 
-| Plataforma | Descarga |
+| Platform | Download |
 |---|---|
 | 🍎 **macOS** | [echa_svhc-macos.dmg](https://github.com/lordmacu/echa-svhc/releases/latest/download/echa_svhc-macos.dmg) |
+| 🪟 **Windows** (installer) | [echa_svhc-windows-setup.exe](https://github.com/lordmacu/echa-svhc/releases/latest/download/echa_svhc-windows-setup.exe) |
 | 🪟 **Windows** (portable) | [echa_svhc-windows-portable.zip](https://github.com/lordmacu/echa-svhc/releases/latest/download/echa_svhc-windows-portable.zip) |
 
-Los enlaces apuntan siempre al [último release](https://github.com/lordmacu/echa-svhc/releases/latest).
-En Windows, descomprime el `.zip` y ejecuta `echa_svhc.exe` (no requiere instalación).
+Links always point to the [latest release](https://github.com/lordmacu/echa-svhc/releases/latest).
+On Windows you can either run the **installer** or unzip the **portable** build and run `echa_svhc.exe`.
 
 ---
 
-## Listas consultadas (22)
+## Lists checked (22)
 
-**🇪🇺 Unión Europea — ECHA**
+**🇪🇺 European Union — ECHA**
 - Candidate List (SVHC)
-- Authorisation List (REACH Annex XIV) — portal nuevo (ECHA CHEM)
-- Authorisation List (REACH Annex XIV) — portal legado
+- Authorisation List (REACH Annex XIV) — new portal (ECHA CHEM)
+- Authorisation List (REACH Annex XIV) — legacy portal
 - Restriction List (REACH Annex XVII)
 
-**🇺🇸 Estados Unidos**
+**🇺🇸 United States**
 - California Proposition 65
 - TSCA Chemical Substance Inventory
 - EPA Hazardous Air Pollutants (Clean Air Act)
 - TSCA Significant New Use Rule (SNUR)
 - TSCA § 5(e) Consent Order
 
-**🇯🇵 Japón**
+**🇯🇵 Japan**
 - PDSCL — Poisonous substances (毒物)
 - PDSCL — Deleterious substances (劇物)
 - ENCS (Existing & New Chemical Substances)
 
-**🇨🇦 Canadá**
+**🇨🇦 Canada**
 - Domestic Substances List (DSL)
 - Non-domestic Substances List (NDSL)
 
-**🌏 Otros (vía ChemRadar)**
+**🌏 Others (via ChemRadar)**
 - 🇨🇳 China IECSC · 🇰🇷 Korea KECL · 🇪🇺 EU REACH Registered · 🇹🇷 Turkey KKDIK
 - 🇵🇭 Philippines PICCS · 🇹🇼 Taiwan TCSI · 🇦🇺 Australia AIIC · 🇳🇿 New Zealand NZIoC
 
 ---
 
-## Características
+## Features
 
-- **Detección automática de CAS** (`2–7 dígitos - 2 dígitos - 1 dígito`), incluso al pegar texto/prosa que los contenga; se convierten en *chips* sin duplicados.
-- **Importar desde archivo**: carga un `.csv`, `.txt`, `.xlsx` o `.xls` y extrae todos los CAS (de cualquier columna/hoja).
-- **Tabla comparativa**: una fila por CAS, una columna por lista (✓ en lista / – no / ⚠ error). Cada fila se expande con el detalle por fuente (fecha de inclusión, motivo Art. 57, Entry No., Sunset date, condiciones…).
-- **Filtros** (Candidate List): Reason for inclusion (Art. 57) y rango de fecha de inclusión.
-- **Exportar a Excel**: genera un `.xlsx` con Sí/No por lista + columnas de detalle.
-- **Consultas en paralelo**: las fuentes se agrupan por host y se consultan simultáneamente, respetando el *rate-limiting* de cada servidor.
+- **Automatic CAS detection** (`2–7 digits - 2 digits - 1 digit`), even when pasting free text/prose; matches become *chips* with no duplicates.
+- **Import from file**: load a `.csv`, `.txt`, `.xlsx` or `.xls` and extract every CAS (from any column/sheet).
+- **Comparative table**: one row per CAS, one column per list (✓ listed / – not / ⚠ error). Each row expands to show per-source details (inclusion date, Art. 57 reason, Entry No., Sunset date, conditions…).
+- **Filters** (Candidate List): Reason for inclusion (Art. 57) and inclusion date range.
+- **Export to Excel**: generates an `.xlsx` with Yes/No per list plus detail columns.
+- **Parallel lookups**: sources are grouped by host and queried concurrently, respecting each server's rate limits.
 
 ---
 
-## Cómo funciona
+## How it works
 
-Cada lista se consulta con el método más fiable para su origen:
+Each list is queried with the most reliable method for its source:
 
-| Origen | Método |
+| Source | Method |
 |---|---|
-| **ECHA** (Candidate, Annex XIV legado, Annex XVII) | Portal Liferay — *render GET* (`p_p_lifecycle=0`) con criterios *namespaced* + `_doSearch=true`; el campo oculto `_total` indica si está listado. |
-| **ECHA CHEM** (Annex XIV nuevo) | API JSON `api-obligation-list/v1/authorisationList?searchText=<cas>`. |
-| **EPA ChemView** (SNUR, § 5(e)) | `chemicals/search` → id → `chemicals/datatable` → se leen los códigos `SNUR` / `CO` en `sources`. |
-| **ChemRadar** (China, Korea, REACH, Turkey, PICCS, TCSI, AIIC, NZIoC, ENCS, Prop 65, TSCA, EPA HAP) | Endpoint público `es_query` por inventario. |
-| **Japón PDSCL** (NIHS) | Listas estáticas (Shift_JIS) descargadas una vez y cacheadas. |
-| **Canadá DSL/NDSL** | Inventarios **locales** (Excel incluido como asset) — búsqueda instantánea, sin red. |
+| **ECHA** (Candidate, Annex XIV legacy, Annex XVII) | Liferay portal — *render GET* (`p_p_lifecycle=0`) with *namespaced* criteria + `_doSearch=true`; the hidden `_total` field signals whether it is listed. |
+| **ECHA CHEM** (Annex XIV new) | JSON API `api-obligation-list/v1/authorisationList?searchText=<cas>`. |
+| **EPA ChemView** (SNUR, § 5(e)) | `chemicals/search` → id → `chemicals/datatable` → reads `SNUR` / `CO` codes in `sources`. |
+| **ChemRadar** (China, Korea, REACH, Turkey, PICCS, TCSI, AIIC, NZIoC, ENCS, Prop 65, TSCA, EPA HAP) | Public `es_query` endpoint per inventory. |
+| **Japan PDSCL** (NIHS) | Static lists (Shift_JIS) fetched once and cached. |
+| **Canada DSL/NDSL** | **Local** inventories (Excel bundled as assets) — instant lookup, no network. |
 
-Detalles del reverse-engineering de ECHA en [`test.md`](test.md).
+ECHA reverse-engineering notes in [`test.md`](test.md).
 
-> **¿Por qué escritorio y no web?** Varias de estas APIs bloquearían las peticiones
-> desde un navegador por **CORS**. Una app nativa hace peticiones HTTP crudas
-> (como `curl`), sin esa restricción.
+> **Why desktop and not web?** Several of these APIs would block requests from a
+> browser due to **CORS**. A native app makes raw HTTP requests (like `curl`),
+> without that restriction.
 
 ---
 
-## Desarrollo
+## Development
 
 ```bash
 flutter pub get
-flutter run -d macos        # o -d windows
+flutter run -d macos        # or -d windows
 flutter test
 ```
 
 ## Builds (CI)
 
 GitHub Actions ([`.github/workflows/build.yml`](.github/workflows/build.yml))
-compila en cada push a `main` y publica como *artifacts*. Al crear un **tag**
-`vX.Y.Z`, los binarios se adjuntan a un **GitHub Release**:
+builds on every push to `main` and publishes the binaries as *artifacts*. When a
+**tag** `vX.Y.Z` is pushed, the binaries are attached to a **GitHub Release**:
 
 ```bash
 git tag v1.4.0
@@ -107,9 +108,9 @@ git push origin v1.4.0
 
 ---
 
-## Aviso
+## Disclaimer
 
-Esta herramienta es una ayuda de *screening* y no sustituye la verificación
-oficial en las fuentes regulatorias. Algunas listas (p. ej. sustancias
-confidenciales bajo TSCA) no son consultables por CAS público. El portal legado
-de ECHA se mantiene hasta **julio 2026**.
+This is a *screening* aid and does not replace official verification against the
+regulatory sources. Some lists (e.g. confidential substances under TSCA) are not
+searchable by public CAS number. ECHA's legacy portal is maintained until
+**July 2026**.
