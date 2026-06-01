@@ -40,8 +40,8 @@ class _HomePageState extends State<HomePage> {
   /// CAS agregados como chips (orden preservado).
   final List<String> _casList = [];
 
-  /// Resultados por CAS (mismo orden que _casList).
-  final Map<String, EchaResult> _results = {};
+  /// Reportes por CAS (mismo orden que _casList).
+  final Map<String, CasReport> _results = {};
 
   bool _running = false;
   int _currentIndex = -1;
@@ -147,17 +147,17 @@ class _HomePageState extends State<HomePage> {
       _currentIndex = -1;
     });
 
-    await _service.searchMany(
+    await _service.searchAll(
       List<String>.from(_casList),
       query: EchaQuery(
         reason: _reason,
         inclusionFrom: _from == null ? null : _fmt(_from!),
         inclusionTo: _to == null ? null : _fmt(_to!),
       ),
-      onResult: (index, result) {
+      onResult: (index, report) {
         setState(() {
           _currentIndex = index;
-          _results[result.cas] = result;
+          _results[report.cas] = report;
         });
       },
     );
@@ -178,7 +178,7 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ECHA — Candidate List (SVHC) por CAS'),
+        title: const Text('ECHA — SVHC + Annex XIV por CAS'),
         backgroundColor: theme.colorScheme.inversePrimary,
       ),
       body: Padding(
@@ -188,13 +188,15 @@ class _HomePageState extends State<HomePage> {
           children: [
             Text(
               'Pega uno o varios números CAS (se detectan automáticamente). '
-              'Ej: 110-54-3',
+              'Se consultan 3 fuentes de ECHA: Candidate List (SVHC), '
+              'Annex XIV nuevo (ECHA CHEM) y Annex XIV legado. Ej: 110-54-3',
               style: theme.textTheme.bodyMedium,
             ),
             const SizedBox(height: 12),
             _buildInput(theme),
             const SizedBox(height: 12),
             _buildFilters(theme),
+            _buildFilterNote(theme),
             const SizedBox(height: 12),
             if (_casList.isNotEmpty) _buildChips(theme),
             const SizedBox(height: 12),
@@ -307,15 +309,29 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /// Nota: los filtros solo afectan a la Candidate List (como en la web).
+  Widget _buildFilterNote(ThemeData theme) {
+    if (_reason.isEmpty && _from == null && _to == null) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Text(
+        'Los filtros Reason/Date solo aplican a la Candidate List.',
+        style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+      ),
+    );
+  }
+
   Widget _buildChips(ThemeData theme) {
     return Wrap(
       spacing: 8,
       runSpacing: 8,
       children: _casList.map((cas) {
-        final result = _results[cas];
+        final report = _results[cas];
         final valid = CasUtils.isValidChecksum(cas);
         return InputChip(
-          avatar: _statusAvatar(result),
+          avatar: _chipAvatar(report),
           label: Text(cas),
           backgroundColor: valid ? null : theme.colorScheme.errorContainer,
           onDeleted: _running ? null : () => _removeChip(cas),
@@ -325,16 +341,18 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget? _statusAvatar(EchaResult? r) {
+  /// Avatar del chip: ✓ si aparece en alguna fuente, ✗ si en ninguna,
+  /// ⚠ si hubo algún error.
+  Widget? _chipAvatar(CasReport? r) {
     if (r == null) return null;
-    switch (r.status) {
-      case EchaStatus.listed:
-        return const Icon(Icons.check_circle, color: Colors.green, size: 18);
-      case EchaStatus.notListed:
-        return const Icon(Icons.cancel, color: Colors.grey, size: 18);
-      case EchaStatus.error:
-        return const Icon(Icons.error, color: Colors.orange, size: 18);
+    final results = r.bySource.values;
+    if (results.any((x) => x.status == EchaStatus.listed)) {
+      return const Icon(Icons.check_circle, color: Colors.green, size: 18);
     }
+    if (results.any((x) => x.status == EchaStatus.error)) {
+      return const Icon(Icons.error, color: Colors.orange, size: 18);
+    }
+    return const Icon(Icons.cancel, color: Colors.grey, size: 18);
   }
 
   Widget _buildActions(ThemeData theme, int done, int total) {
@@ -374,89 +392,215 @@ class _HomePageState extends State<HomePage> {
         ),
       );
     }
-    return ListView.separated(
-      itemCount: _casList.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
-      itemBuilder: (context, i) {
-        final cas = _casList[i];
-        final r = _results[cas];
-        final isCurrent = _running && i == _currentIndex;
-        return _ResultTile(cas: cas, result: r, isCurrent: isCurrent);
-      },
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _ResultHeader(),
+        const Divider(height: 1),
+        Expanded(
+          child: ListView.separated(
+            itemCount: _casList.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (context, i) {
+              final cas = _casList[i];
+              final report = _results[cas];
+              final isCurrent = _running && i == _currentIndex;
+              return _ResultRow(
+                cas: cas,
+                report: report,
+                isCurrent: isCurrent,
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
 
-class _ResultTile extends StatelessWidget {
+/// Anchos de columna compartidos entre el header y cada fila.
+const double _kCasWidth = 110;
+const double _kSourceWidth = 116;
+
+class _ResultHeader extends StatelessWidget {
+  const _ResultHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context)
+        .textTheme
+        .labelMedium
+        ?.copyWith(fontWeight: FontWeight.bold);
+    Widget cell(String t, double w) =>
+        SizedBox(width: w, child: Text(t, style: style, textAlign: TextAlign.center));
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      child: Row(
+        children: [
+          SizedBox(width: _kCasWidth, child: Text('CAS', style: style)),
+          for (final s in EchaSource.values) cell(s.shortLabel, _kSourceWidth),
+          const SizedBox(width: 8),
+          Expanded(child: Text('Detalle', style: style)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Una fila de la tabla: CAS + 3 indicadores + detalle expandible.
+class _ResultRow extends StatelessWidget {
   final String cas;
-  final EchaResult? result;
+  final CasReport? report;
   final bool isCurrent;
 
-  const _ResultTile({
+  const _ResultRow({
     required this.cas,
-    required this.result,
+    required this.report,
     required this.isCurrent,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final r = result;
 
-    Widget leading;
-    String title;
-    Widget? subtitle;
-    Color? color;
-
-    if (r == null) {
-      leading = isCurrent
-          ? const SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : Icon(Icons.hourglass_empty, color: theme.disabledColor);
-      title = cas;
-      subtitle = Text(isCurrent ? 'Consultando…' : 'En cola');
-    } else {
-      switch (r.status) {
-        case EchaStatus.listed:
-          leading = const Icon(Icons.check_circle, color: Colors.green);
-          title = '$cas — EN LA LISTA';
-          color = Colors.green.shade800;
-          subtitle = Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (r.name != null) Text('Nombre: ${r.name}'),
-              if (r.ecNumber != null) Text('EC: ${r.ecNumber}'),
-              if (r.inclusionDate != null)
-                Text('Inclusión: ${r.inclusionDate}'),
-              if (r.reason != null) Text('Motivo: ${r.reason}'),
-              if (r.decisionNumber != null)
-                Text('Decisión: ${r.decisionNumber}'),
-            ],
-          );
-          break;
-        case EchaStatus.notListed:
-          leading = const Icon(Icons.cancel, color: Colors.grey);
-          title = '$cas — NO está en la lista';
-          subtitle = const Text('No aparece en la Candidate List (SVHC).');
-          break;
-        case EchaStatus.error:
-          leading = const Icon(Icons.error, color: Colors.orange);
-          title = '$cas — Error';
-          color = Colors.orange.shade900;
-          subtitle = Text(r.error ?? 'Error desconocido');
-          break;
+    Widget indicator(EchaSource s) {
+      final r = report?[s];
+      final Widget icon;
+      if (report == null) {
+        icon = isCurrent
+            ? const SizedBox(
+                width: 16, height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2))
+            : Icon(Icons.hourglass_empty, size: 18, color: theme.disabledColor);
+      } else {
+        icon = switch (r!.status) {
+          EchaStatus.listed =>
+            const Icon(Icons.check_circle, color: Colors.green, size: 20),
+          EchaStatus.notListed =>
+            Icon(Icons.remove_circle_outline,
+                color: theme.disabledColor, size: 20),
+          EchaStatus.error =>
+            const Icon(Icons.error_outline, color: Colors.orange, size: 20),
+        };
       }
+      return SizedBox(
+        width: _kSourceWidth,
+        child: Tooltip(
+          message: r?.error ?? s.label,
+          child: Center(child: icon),
+        ),
+      );
     }
 
-    return ListTile(
-      leading: leading,
-      title: Text(title,
-          style: TextStyle(fontWeight: FontWeight.w600, color: color)),
-      subtitle: subtitle,
-      isThreeLine: r?.status == EchaStatus.listed,
+    final summaryRow = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: _kCasWidth,
+            child: Text(cas,
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+          ),
+          for (final s in EchaSource.values) indicator(s),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _detailSummary(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    // Si hay reporte, permitir expandir para ver detalle por fuente.
+    if (report == null) return summaryRow;
+    return Theme(
+      data: theme.copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        tilePadding: const EdgeInsets.symmetric(horizontal: 4),
+        title: summaryRow,
+        childrenPadding: const EdgeInsets.fromLTRB(24, 0, 16, 12),
+        children: [
+          for (final s in EchaSource.values) _SourceDetail(result: report![s]!),
+        ],
+      ),
+    );
+  }
+
+  String _detailSummary() {
+    final r = report;
+    if (r == null) return isCurrent ? 'Consultando…' : 'En cola';
+    final name = r[EchaSource.candidate]?.name ??
+        r[EchaSource.authNew]?.name ??
+        r[EchaSource.authLegacy]?.name;
+    final inLists = EchaSource.values
+        .where((s) => r[s]?.status == EchaStatus.listed)
+        .map((s) => s.shortLabel)
+        .toList();
+    if (inLists.isEmpty) return name ?? 'No aparece en ninguna lista';
+    return '${name ?? ''} — en: ${inLists.join(", ")}';
+  }
+}
+
+/// Detalle de una fuente dentro de la fila expandida.
+class _SourceDetail extends StatelessWidget {
+  final EchaResult result;
+  const _SourceDetail({required this.result});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final r = result;
+
+    final (IconData ico, Color col, String estado) = switch (r.status) {
+      EchaStatus.listed => (Icons.check_circle, Colors.green, 'EN LA LISTA'),
+      EchaStatus.notListed =>
+        (Icons.remove_circle_outline, theme.disabledColor, 'No está'),
+      EchaStatus.error => (Icons.error_outline, Colors.orange, 'Error'),
+    };
+
+    final lines = <String>[
+      if (r.name != null) 'Nombre: ${r.name}',
+      if (r.ecNumber != null) 'EC: ${r.ecNumber}',
+      // Candidate List:
+      if (r.inclusionDate != null) 'Inclusión: ${r.inclusionDate}',
+      if (r.decisionNumber != null) 'Decisión: ${r.decisionNumber}',
+      // Annex XIV:
+      if (r.entryNumber != null) 'Entry: ${r.entryNumber}',
+      if (r.latestApplicationDate != null)
+        'Latest application: ${r.latestApplicationDate}',
+      if (r.sunsetDate != null) 'Sunset date: ${r.sunsetDate}',
+      if (r.reason != null) 'Motivo/propiedad: ${r.reason}',
+      if (r.status == EchaStatus.error && r.error != null) r.error!,
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(ico, color: col, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${r.source.label} — $estado',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: r.status == EchaStatus.listed
+                            ? Colors.green.shade800
+                            : null)),
+                for (final l in lines)
+                  Text(l, style: theme.textTheme.bodySmall),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -1,13 +1,17 @@
-# ECHA SVHC — consulta la Candidate List por CAS
+# ECHA — consulta SVHC + Annex XIV por CAS
 
-App de escritorio (**macOS** y **Windows**) que consulta la
-[Candidate List of substances of very high concern (SVHC)](https://www.echa.europa.eu/candidate-list-table)
-de ECHA por número **CAS**.
+App de escritorio (**macOS** y **Windows**) que consulta, por número **CAS**, la
+existencia de una sustancia en **tres listas de ECHA**:
+
+1. **Candidate List (SVHC)** — [`candidate-list-table`](https://www.echa.europa.eu/candidate-list-table)
+2. **Authorisation List (REACH Annex XIV) — nueva** — [`chem.echa.europa.eu/.../authorisationList`](https://chem.echa.europa.eu/obligation-lists/authorisationList) (API JSON)
+3. **Authorisation List (REACH Annex XIV) — legado** — [`authorisation-list`](https://www.echa.europa.eu/authorisation-list)
 
 Pega uno o varios CAS (los detecta automáticamente y los convierte en *chips*),
-pulsa **Consultar** y la app revisa **uno por uno** si cada sustancia está o no
-en la Candidate List, mostrando nombre, EC number, fecha de inclusión y motivo
-(Artículo 57).
+pulsa **Consultar** y la app revisa **uno por uno** cada sustancia y muestra una
+**tabla con 3 columnas** (✓/✗ por fuente). Cada fila se expande para ver los
+detalles de cada lista: nombre, EC, fecha de inclusión / motivo (Candidate) y
+Entry No., Latest application date, Sunset date (Annex XIV).
 
 ![estado](https://github.com/lordmacu/echa-svhc/actions/workflows/build.yml/badge.svg)
 
@@ -25,25 +29,23 @@ En Windows, descomprime el `.zip` y ejecuta `echa_svhc.exe` (no requiere instala
 
 ## Características
 
-- **Detección automática de formato CAS** (`2–7 dígitos - 2 dígitos - 1 dígito`) en texto pegado.
+- **3 fuentes por CAS**: Candidate List (SVHC), Annex XIV nuevo (ECHA CHEM) y Annex XIV legado.
+- **Tabla con 3 columnas** de indicadores (✓ en lista / ✗ no / ⚠ error); cada fila se expande con el detalle por fuente.
+- **Detección automática de formato CAS** (`2–7 dígitos - 2 dígitos - 1 dígito`), incluso pegando texto/prosa que los contenga.
 - **Importar desde archivo**: carga un `.csv`, `.txt`, `.xlsx` o `.xls` y extrae automáticamente todos los CAS (de cualquier columna/hoja).
 - Entrada por **chips**: agrega, valida el dígito de control y elimina CAS fácilmente.
+- **Filtros** (solo Candidate List, como en la web): Reason for inclusion (Art. 57) y rango de fecha de inclusión.
 - Consulta **secuencial** (uno por uno) con barra de progreso.
-- Por cada CAS:
-  - ✅ **En la lista** — con nombre, EC, fecha de inclusión, motivo (Art. 57) y nº de decisión.
-  - ❌ **No está** en la Candidate List.
-  - ⚠️ **Error** (red/sesión).
 
 ## Cómo funciona
 
-Replica el flujo verificado del buscador de ECHA (un portlet Liferay tras Azure WAF):
+Cada CAS se consulta contra tres fuentes (ver [`test.md`](test.md) para el reverse-engineering completo):
 
-1. **GET** a la página base → extrae `p_auth` (token CSRF), `formDate` y cookies de sesión.
-2. **POST** a la URL de acción del portlet reusando cookies + `p_auth`.
-3. El POST puede devolver un **HTTP 403 engañoso**: el cuerpo trae el HTML real → se parsea el *body*, no el status code.
-4. No se siguen redirects (el redirect final sí cae en un 403 real del WAF).
-
-> Detalles completos del reverse-engineering en [`test.md`](test.md).
+1. **Candidate List** y **Annex XIV legado** (portal Liferay): la búsqueda real es un
+   **render GET** (`p_p_lifecycle=0`) con criterios *namespaced* + `_doSearch=true`;
+   la verdad está en el campo oculto `_total` (0 = no listado). Solo requiere cookies.
+2. **Annex XIV nuevo** (ECHA CHEM): API JSON
+   `api-obligation-list/v1/authorisationList?searchText=<cas>`.
 
 Por qué **escritorio** y no web: el navegador bloquearía estas peticiones por
 **CORS** (ECHA solo permite su propio dominio). Una app nativa hace peticiones

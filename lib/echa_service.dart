@@ -4,22 +4,58 @@ import 'dart:io';
 
 void _log(String msg) => dev.log(msg, name: 'ECHA');
 
-/// Resultado de una consulta a la Candidate List (SVHC) de ECHA.
+/// Las tres fuentes que se consultan por cada CAS.
+enum EchaSource {
+  /// Candidate List (SVHC) — portal legado, portlet Liferay.
+  candidate,
+
+  /// Authorisation List (REACH Annex XIV) — API JSON de ECHA CHEM (nuevo).
+  authNew,
+
+  /// Authorisation List (REACH Annex XIV) — portal legado, portlet Liferay.
+  authLegacy,
+}
+
+extension EchaSourceInfo on EchaSource {
+  String get label => switch (this) {
+        EchaSource.candidate => 'Candidate List (SVHC)',
+        EchaSource.authNew => 'Annex XIV (ECHA CHEM)',
+        EchaSource.authLegacy => 'Annex XIV (legado)',
+      };
+
+  String get shortLabel => switch (this) {
+        EchaSource.candidate => 'Candidate',
+        EchaSource.authNew => 'Annex XIV (nuevo)',
+        EchaSource.authLegacy => 'Annex XIV (legado)',
+      };
+}
+
+enum EchaStatus { listed, notListed, error }
+
+/// Resultado de una consulta a UNA fuente para un CAS.
 class EchaResult {
+  final EchaSource source;
   final String cas;
   final EchaStatus status;
 
-  /// Datos de la fila si fue encontrada en la Candidate List.
+  // Identidad / detalles (los que aplican según la fuente).
   final String? name;
   final String? ecNumber;
+
+  // Candidate List:
   final String? inclusionDate;
   final String? reason;
   final String? decisionNumber;
 
-  /// Mensaje de error (cuando status == error).
+  // Authorisation List (Annex XIV):
+  final String? entryNumber;
+  final String? latestApplicationDate;
+  final String? sunsetDate;
+
   final String? error;
 
   const EchaResult({
+    required this.source,
     required this.cas,
     required this.status,
     this.name,
@@ -27,13 +63,33 @@ class EchaResult {
     this.inclusionDate,
     this.reason,
     this.decisionNumber,
+    this.entryNumber,
+    this.latestApplicationDate,
+    this.sunsetDate,
     this.error,
   });
+
+  EchaResult._status(this.source, this.cas, this.status, {this.error})
+      : name = null,
+        ecNumber = null,
+        inclusionDate = null,
+        reason = null,
+        decisionNumber = null,
+        entryNumber = null,
+        latestApplicationDate = null,
+        sunsetDate = null;
 }
 
-enum EchaStatus { listed, notListed, error }
+/// Reporte de un CAS contra las tres fuentes.
+class CasReport {
+  final String cas;
+  final Map<EchaSource, EchaResult> bySource;
+  const CasReport(this.cas, this.bySource);
 
-/// Filtros opcionales del buscador (equivalen a los de la página de ECHA).
+  EchaResult? operator [](EchaSource s) => bySource[s];
+}
+
+/// Filtros opcionales (solo aplican a la Candidate List, como en la web).
 class EchaQuery {
   /// Motivo de inclusión (Art. 57). null/'' = "- All -".
   final String? reason;
@@ -52,7 +108,7 @@ class EchaQuery {
   static const empty = EchaQuery();
 }
 
-/// Opciones del filtro "Reason for inclusion" (extraídas del formulario real).
+/// Opciones del filtro "Reason for inclusion" (Candidate List).
 /// La cadena vacía representa "- All -".
 const echaReasons = <String>[
   '', // - All -
@@ -69,13 +125,15 @@ const echaReasons = <String>[
   'Specific target organ toxicity after repeated exposure (Article 57(f) - human health)',
 ];
 
-/// Cliente del buscador de la Candidate List (SVHC) de ECHA.
+/// Cliente que consulta un CAS contra las tres fuentes de ECHA:
 ///
-/// Método (ver test.md): el portlet Liferay NO filtra por la acción POST
-/// (`p_p_lifecycle=1`, que devuelve siempre las 50 más recientes), sino por
-/// un **render GET** (`p_p_lifecycle=0`) con los criterios como parámetros
-/// *namespaced* + `_doSearch=true`. El número de coincidencias se lee del
-/// campo oculto `_total`. Solo se necesitan las cookies de sesión (no p_auth).
+/// 1. **Candidate List (SVHC)** y 3. **Annex XIV legado**: portal Liferay.
+///    El portlet NO filtra por la acción POST (devuelve siempre las 50 más
+///    recientes); el filtrado real es un **render GET** (`p_p_lifecycle=0`)
+///    con criterios *namespaced* + `_doSearch=true`. La verdad está en el
+///    campo oculto `_total` (0 = no listado). Solo requiere cookies.
+/// 2. **Annex XIV nuevo (ECHA CHEM)**: API JSON
+///    `api-obligation-list/v1/authorisationList?searchText=<cas>` (sin sesión).
 class EchaService {
   static const _ua =
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
@@ -83,8 +141,12 @@ class EchaService {
       'Chrome/124.0.0.0 Safari/537.36';
 
   static const _portlet = '_disslists_WAR_disslistsportlet';
-  static const _base =
+  static const _candidateBase =
       'https://www.echa.europa.eu/web/guest/candidate-list-table';
+  static const _authLegacyBase =
+      'https://www.echa.europa.eu/web/guest/authorisation-list';
+  static const _authApi =
+      'https://chem.echa.europa.eu/api-obligation-list/v1/authorisationList';
 
   final HttpClient _client = HttpClient()
     ..userAgent = _ua
@@ -92,16 +154,18 @@ class EchaService {
 
   void close() => _client.close(force: true);
 
-  /// Sesión: solo cookies de la página base (el render GET no usa p_auth).
-  Future<_Session> _openSession() async {
-    _log('openSession: GET $_base');
-    final req = await _client.getUrl(Uri.parse(_base));
+  // ---------------------------------------------------------------------------
+  // Sesión del portlet (cookies). Se reusa por base URL.
+  // ---------------------------------------------------------------------------
+  Future<List<Cookie>> _openSession(String baseUrl) async {
+    _log('openSession: GET $baseUrl');
+    final req = await _client.getUrl(Uri.parse(baseUrl));
     req.followRedirects = false;
     req.headers.set(HttpHeaders.userAgentHeader, _ua);
     final res = await req.close();
     final body = await res.transform(utf8.decoder).join();
     _log('openSession: status=${res.statusCode} bodyLen=${body.length} '
-        'setCookies=${res.cookies.length}');
+        'cookies=${res.cookies.length}');
 
     if (body.contains('Azure WAF') ||
         body.contains('Web Application Firewall')) {
@@ -110,21 +174,32 @@ class EchaService {
     if (res.cookies.isEmpty && body.length < 50000) {
       throw Exception('No se pudo abrir sesión con ECHA (respuesta inválida).');
     }
-    return _Session(cookies: res.cookies);
+    return res.cookies;
   }
 
-  /// Consulta un único CAS vía render GET (filtra server-side de verdad).
-  Future<EchaResult> _searchWith(_Session s, String cas, EchaQuery q) async {
-    // Parámetros namespaced del render (p_p_lifecycle=0) + _doSearch=true.
+  // ---------------------------------------------------------------------------
+  // Portlet (Candidate List y Annex XIV legado) — render GET.
+  // ---------------------------------------------------------------------------
+  Future<EchaResult> _searchPortlet(
+    List<Cookie> cookies,
+    String baseUrl,
+    EchaSource source,
+    String cas,
+    EchaQuery q,
+  ) async {
+    // Los filtros reason/fecha solo existen en la Candidate List.
+    final isCandidate = source == EchaSource.candidate;
     final params = <String, String>{
       'p_p_id': 'disslists_WAR_disslistsportlet',
       'p_p_lifecycle': '0',
       'p_p_state': 'normal',
       'p_p_mode': 'view',
       '${_portlet}_substance_identifier_field_key': cas,
-      '${_portlet}_haz_detailed_concern': q.reason ?? '',
-      '${_portlet}_dte_inclusionFrom': _toEchaDate(q.inclusionFrom),
-      '${_portlet}_dte_inclusionTo': _toEchaDate(q.inclusionTo),
+      if (isCandidate) ...{
+        '${_portlet}_haz_detailed_concern': q.reason ?? '',
+        '${_portlet}_dte_inclusionFrom': _toEchaDate(q.inclusionFrom),
+        '${_portlet}_dte_inclusionTo': _toEchaDate(q.inclusionTo),
+      },
       '${_portlet}_orderByCol': 'dte_inclusion',
       '${_portlet}_orderByType': 'desc',
       '${_portlet}_doSearch': 'true',
@@ -133,56 +208,41 @@ class EchaService {
       '${_portlet}_delta': '50',
       '${_portlet}_cur': '1',
     };
-    final uri = Uri.parse(_base).replace(queryParameters: params);
+    final uri = Uri.parse(baseUrl).replace(queryParameters: params);
 
     final req = await _client.getUrl(uri);
     req.followRedirects = false;
     req.headers.set(HttpHeaders.userAgentHeader, _ua);
-    req.headers.set('Referer', _base);
-    req.cookies.addAll(s.cookies);
+    req.headers.set('Referer', baseUrl);
+    req.cookies.addAll(cookies);
 
-    _log('search "$cas": render GET (reason=${q.reason}, '
-        'from=${q.inclusionFrom}, to=${q.inclusionTo})');
     final res = await req.close();
     final body = await res.transform(utf8.decoder).join();
-    _log('search "$cas": status=${res.statusCode} bodyLen=${body.length}');
+    _log('portlet ${source.name} "$cas": status=${res.statusCode} '
+        'bodyLen=${body.length}');
 
-    final result = _parse(cas, body, res.statusCode);
-    _log('search "$cas": -> ${result.status} name=${result.name}');
-    return result;
+    return _parsePortlet(source, cas, body, res.statusCode);
   }
 
-  /// Parsea la página de resultados. El número de coincidencias está en el
-  /// campo oculto `_total`; la(s) fila(s) traen los detalles.
-  EchaResult _parse(String cas, String html, int statusCode) {
+  EchaResult _parsePortlet(
+      EchaSource source, String cas, String html, int statusCode) {
     if (html.contains('Azure WAF') ||
         html.contains('Web Application Firewall')) {
-      return EchaResult(
-        cas: cas,
-        status: EchaStatus.error,
-        error: 'Bloqueado por WAF (sesión inválida o caducada).',
-      );
+      return EchaResult._status(source, cas, EchaStatus.error,
+          error: 'Bloqueado por WAF.');
     }
 
-    // Respuesta inválida (502/503, body truncado, sin el campo _total):
-    // no reportar como "no está" (sería un falso negativo).
     final totalMatch =
         RegExp('${_portlet}_total"[^>]*value="(\\d+)"').firstMatch(html);
     if (statusCode >= 500 || totalMatch == null) {
-      return EchaResult(
-        cas: cas,
-        status: EchaStatus.error,
-        error: 'Respuesta inválida del servidor (HTTP $statusCode, '
-            '${html.length} bytes). Reintentar.',
-      );
+      return EchaResult._status(source, cas, EchaStatus.error,
+          error: 'Respuesta inválida (HTTP $statusCode, ${html.length} B).');
     }
 
-    final total = int.parse(totalMatch.group(1)!);
-    if (total == 0) {
-      return EchaResult(cas: cas, status: EchaStatus.notListed);
+    if (int.parse(totalMatch.group(1)!) == 0) {
+      return EchaResult._status(source, cas, EchaStatus.notListed);
     }
 
-    // Hay coincidencias: buscar la fila de datos que contenga el CAS exacto.
     final rows = RegExp(r'<tr[^>]*>(.*?)</tr>', dotAll: true).allMatches(html);
     for (final row in rows) {
       if (!row.group(1)!.contains('View Details')) continue;
@@ -191,11 +251,13 @@ class EchaService {
           .map((c) => _clean(c.group(1)!))
           .where((c) => c.isNotEmpty)
           .toList();
+      if (!cells.any((c) => _cellHasCas(c, cas))) continue;
 
-      if (cells.any((c) => _cellHasCas(c, cas))) {
-        // nombre | EC number | CAS | fecha inclusión | motivo | nº decisión | …
-        String? at(int i) => i < cells.length ? cells[i] : null;
+      String? at(int i) => i < cells.length ? cells[i] : null;
+      if (source == EchaSource.candidate) {
+        // name | EC | CAS | inclusión | reason | decisión | …
         return EchaResult(
+          source: source,
           cas: cas,
           status: EchaStatus.listed,
           name: _cleanName(at(0)),
@@ -204,15 +266,157 @@ class EchaService {
           reason: at(4),
           decisionNumber: at(5),
         );
+      } else {
+        // name | EC | CAS | Entry No | Latest application | Sunset | property
+        return EchaResult(
+          source: source,
+          cas: cas,
+          status: EchaStatus.listed,
+          name: _cleanName(at(0)),
+          ecNumber: at(1),
+          entryNumber: at(3),
+          latestApplicationDate: at(4),
+          sunsetDate: at(5),
+          reason: at(6),
+        );
       }
     }
-
-    // total>0 pero el CAS exacto no aparece en una fila: probablemente una
-    // coincidencia difusa (p. ej. CAS inválido). Tratar como no listado.
-    return EchaResult(cas: cas, status: EchaStatus.notListed);
+    // total>0 pero sin fila con el CAS exacto: coincidencia difusa => no listado.
+    return EchaResult._status(source, cas, EchaStatus.notListed);
   }
 
-  /// Convierte "yyyy-MM-dd" (o null) al formato "dd-MMM-yyyy" que usa ECHA.
+  // ---------------------------------------------------------------------------
+  // API JSON (Annex XIV nuevo, ECHA CHEM).
+  // ---------------------------------------------------------------------------
+  Future<EchaResult> _searchAuthApi(String cas) async {
+    final uri = Uri.parse(_authApi).replace(queryParameters: {
+      'searchText': cas,
+      'pageIndex': '1',
+      'pageSize': '20',
+    });
+    try {
+      final req = await _client.getUrl(uri);
+      req.followRedirects = false;
+      req.headers.set(HttpHeaders.userAgentHeader, _ua);
+      req.headers.set('Accept', 'application/json');
+      final res = await req.close();
+      final body = await res.transform(utf8.decoder).join();
+      _log('authApi "$cas": status=${res.statusCode} bodyLen=${body.length}');
+
+      if (res.statusCode != 200) {
+        return EchaResult._status(EchaSource.authNew, cas, EchaStatus.error,
+            error: 'API HTTP ${res.statusCode}.');
+      }
+      final data = jsonDecode(body) as Map<String, dynamic>;
+      final items = (data['items'] as List?) ?? const [];
+
+      for (final raw in items) {
+        final item = raw as Map<String, dynamic>;
+        final casList = (item['casNumber'] as List?)?.cast<dynamic>() ?? [];
+        if (!casList.any((c) => '$c' == cas)) continue;
+        return EchaResult(
+          source: EchaSource.authNew,
+          cas: cas,
+          status: EchaStatus.listed,
+          name: _first(item['substanceName']),
+          ecNumber: _first(item['ecNumber']),
+          entryNumber: _first(item['entryNumber']) ?? '${item['entryNumber']}',
+          latestApplicationDate: _first(item['latestApplicationDate']),
+          sunsetDate: _first(item['sunsetDate']),
+          reason: _first(item['reasonForInclusion']),
+        );
+      }
+      return EchaResult._status(EchaSource.authNew, cas, EchaStatus.notListed);
+    } catch (e) {
+      return EchaResult._status(EchaSource.authNew, cas, EchaStatus.error,
+          error: e.toString());
+    }
+  }
+
+  /// Toma el primer valor útil de un campo que puede ser String o List.
+  String? _first(dynamic v) {
+    if (v == null) return null;
+    if (v is String) return v.isEmpty || v == '-' ? null : v;
+    if (v is List) {
+      for (final e in v) {
+        final s = '$e';
+        if (s.isNotEmpty && s != '-') return s;
+      }
+      return null;
+    }
+    final s = '$v';
+    return s.isEmpty || s == '-' || s == 'null' ? null : s;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Orquestación: por cada CAS, consultar las tres fuentes.
+  // ---------------------------------------------------------------------------
+  Future<void> searchAll(
+    List<String> casList, {
+    EchaQuery query = EchaQuery.empty,
+    required void Function(int index, CasReport report) onResult,
+  }) async {
+    List<Cookie>? candidateCookies;
+    List<Cookie>? authLegacyCookies;
+
+    for (var i = 0; i < casList.length; i++) {
+      final cas = casList[i];
+
+      // Candidate List (con reintento de sesión).
+      EchaResult candidate;
+      try {
+        candidateCookies ??= await _openSession(_candidateBase);
+        candidate = await _searchPortlet(
+            candidateCookies, _candidateBase, EchaSource.candidate, cas, query);
+        if (candidate.status == EchaStatus.error) {
+          candidateCookies = await _openSession(_candidateBase);
+          candidate = await _searchPortlet(candidateCookies, _candidateBase,
+              EchaSource.candidate, cas, query);
+        }
+      } catch (e) {
+        candidateCookies = null;
+        candidate = EchaResult._status(
+            EchaSource.candidate, cas, EchaStatus.error, error: e.toString());
+      }
+
+      // Annex XIV legado (con reintento de sesión).
+      EchaResult authLegacy;
+      try {
+        authLegacyCookies ??= await _openSession(_authLegacyBase);
+        authLegacy = await _searchPortlet(authLegacyCookies, _authLegacyBase,
+            EchaSource.authLegacy, cas, query);
+        if (authLegacy.status == EchaStatus.error) {
+          authLegacyCookies = await _openSession(_authLegacyBase);
+          authLegacy = await _searchPortlet(authLegacyCookies, _authLegacyBase,
+              EchaSource.authLegacy, cas, query);
+        }
+      } catch (e) {
+        authLegacyCookies = null;
+        authLegacy = EchaResult._status(
+            EchaSource.authLegacy, cas, EchaStatus.error, error: e.toString());
+      }
+
+      // Annex XIV nuevo (API JSON, sin sesión).
+      final authNew = await _searchAuthApi(cas);
+
+      onResult(
+        i,
+        CasReport(cas, {
+          EchaSource.candidate: candidate,
+          EchaSource.authNew: authNew,
+          EchaSource.authLegacy: authLegacy,
+        }),
+      );
+
+      if (i < casList.length - 1) {
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Helpers de parseo.
+  // ---------------------------------------------------------------------------
   String _toEchaDate(String? iso) {
     if (iso == null || iso.isEmpty) return '';
     final d = DateTime.tryParse(iso);
@@ -225,8 +429,6 @@ class EchaService {
     return '$dd-${names[d.month - 1]}-${d.year}';
   }
 
-  /// Limpia el nombre quitando los sufijos "EC number: …"/"CAS number: …"
-  /// que el layout responsive de ECHA inyecta dentro de la primera celda.
   String? _cleanName(String? raw) {
     if (raw == null) return null;
     var n = raw;
@@ -236,14 +438,11 @@ class EchaService {
     return n.trim();
   }
 
-  /// True si la celda contiene el CAS como número completo (no como subcadena
-  /// de otro CAS). Ej: "7440-43-9" no debe coincidir dentro de "17440-43-9".
   bool _cellHasCas(String cell, String cas) {
     final re = RegExp(r'(?<![\d-])' + RegExp.escape(cas) + r'(?![\d-])');
     return re.hasMatch(cell);
   }
 
-  /// Quita etiquetas HTML, decodifica entidades y colapsa espacios.
   String _clean(String s) {
     var t = s.replaceAll(RegExp(r'<[^>]+>'), ' ');
     t = _unescape(t);
@@ -258,48 +457,4 @@ class EchaService {
       .replaceAll('&quot;', '"')
       .replaceAll('&#39;', "'")
       .replaceAll('&nbsp;', ' ');
-
-  /// Consulta una lista de CAS uno por uno, reportando progreso.
-  /// Abre una sesión (cookies) al inicio y la reusa para el lote.
-  /// Si una consulta falla, reabre sesión y reintenta una vez.
-  Future<void> searchMany(
-    List<String> casList, {
-    EchaQuery query = EchaQuery.empty,
-    required void Function(int index, EchaResult result) onResult,
-  }) async {
-    _Session? session;
-    for (var i = 0; i < casList.length; i++) {
-      final cas = casList[i];
-      try {
-        session ??= await _openSession();
-        var result = await _searchWith(session, cas, query);
-
-        // Reintento con sesión fresca si hubo WAF o respuesta inválida
-        // (502/503, body truncado): así un fallo transitorio no se reporta
-        // como "no está en la lista".
-        if (result.status == EchaStatus.error) {
-          session = await _openSession();
-          result = await _searchWith(session, cas, query);
-        }
-        onResult(i, result);
-      } catch (e) {
-        // Si falló abriendo sesión, invalidarla para reintentar en el siguiente.
-        session = null;
-        onResult(
-          i,
-          EchaResult(cas: cas, status: EchaStatus.error, error: e.toString()),
-        );
-      }
-
-      // Pausa de cortesía entre consultas para no disparar el WAF/throttling.
-      if (i < casList.length - 1) {
-        await Future<void>.delayed(const Duration(milliseconds: 250));
-      }
-    }
-  }
-}
-
-class _Session {
-  final List<Cookie> cookies;
-  _Session({required this.cookies});
 }
