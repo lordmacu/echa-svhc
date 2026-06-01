@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ECHA — Consulta regulatoria por número CAS</title>
+<meta name="description" content="App de escritorio (macOS y Windows) que verifica un número CAS contra 22 listas e inventarios regulatorios de químicos en todo el mundo.">
+<style>
+  :root{
+    --bg:#0f1724; --panel:#16213a; --ink:#e8eef7; --muted:#9fb0c9;
+    --brand:#1565c0; --brand2:#3b82f6; --ok:#16a34a; --line:#24324d;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:var(--bg);color:var(--ink);line-height:1.55}
+  a{color:var(--brand2);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 20px}
+  header{background:linear-gradient(160deg,#13203b,#0f1724);border-bottom:1px solid var(--line)}
+  .hero{padding:64px 0 40px;text-align:center}
+  .hero h1{font-size:2.4rem;margin:0 0 12px;letter-spacing:-.5px}
+  .hero p.lead{font-size:1.15rem;color:var(--muted);max-width:680px;margin:0 auto 28px}
+  .badge{display:inline-block;background:#0b1220;border:1px solid var(--line);color:var(--ok);
+         padding:4px 12px;border-radius:999px;font-size:.85rem;margin-bottom:24px}
+  .cta{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:8px}
+  .btn{display:inline-flex;align-items:center;gap:8px;padding:13px 22px;border-radius:12px;
+       font-weight:600;font-size:1rem;border:1px solid transparent}
+  .btn-primary{background:var(--brand);color:#fff}
+  .btn-primary:hover{background:#1976d2;text-decoration:none}
+  .btn-ghost{background:transparent;border-color:var(--line);color:var(--ink)}
+  .btn-ghost:hover{border-color:var(--brand2);text-decoration:none}
+  .shot{margin:40px auto 0;max-width:920px}
+  .shot img{width:100%;border-radius:14px;border:1px solid var(--line);
+            box-shadow:0 24px 60px rgba(0,0,0,.45)}
+  section{padding:54px 0;border-top:1px solid var(--line)}
+  section h2{font-size:1.6rem;margin:0 0 24px}
+  .grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}
+  .card h3{margin:0 0 8px;font-size:1.05rem}
+  .card p{margin:0;color:var(--muted);font-size:.95rem}
+  .regions{display:grid;gap:22px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+  .region h3{margin:0 0 10px;font-size:1rem;color:var(--brand2)}
+  .region ul{margin:0;padding-left:18px;color:var(--muted);font-size:.92rem}
+  .region li{margin:3px 0}
+  .count{font-size:3rem;font-weight:800;color:var(--brand2);line-height:1}
+  footer{padding:40px 0;color:var(--muted);font-size:.9rem;text-align:center;border-top:1px solid var(--line)}
+  .note{background:#1a1407;border:1px solid #3a2d0a;color:#e9d8a6;padding:14px 18px;
+        border-radius:12px;font-size:.92rem;margin-top:18px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap hero">
+    <div class="badge">● 22 listas regulatorias · macOS &amp; Windows</div>
+    <h1>Consulta regulatoria por número CAS</h1>
+    <p class="lead">Pega uno o varios números CAS y verifica al instante en qué
+      listas e inventarios de químicos del mundo aparece cada sustancia.
+      Resultados en una tabla comparativa exportable a Excel.</p>
+    <div class="cta">
+      <a class="btn btn-primary" href="https://github.com/lordmacu/echa-svhc/releases/latest/download/echa_svhc-macos.dmg">🍎 Descargar para macOS</a>
+      <a class="btn btn-primary" href="https://github.com/lordmacu/echa-svhc/releases/latest/download/echa_svhc-windows-portable.zip">🪟 Descargar para Windows</a>
+      <a class="btn btn-ghost" href="https://github.com/lordmacu/echa-svhc">Ver en GitHub</a>
+    </div>
+    <div class="shot"><img src="screenshot.png" alt="Captura de la aplicación mostrando la tabla de resultados por CAS"></div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <h2>Características</h2>
+    <div class="grid">
+      <div class="card"><h3>Detección automática de CAS</h3><p>Pega texto o prosa: detecta los números CAS y los convierte en chips, sin duplicados.</p></div>
+      <div class="card"><h3>Importar CSV / Excel</h3><p>Carga un archivo y extrae todos los CAS de cualquier columna u hoja.</p></div>
+      <div class="card"><h3>Tabla comparativa</h3><p>Una fila por CAS, una columna por lista (✓ / – / ⚠). Cada fila se expande con el detalle de cada fuente.</p></div>
+      <div class="card"><h3>Exportar a Excel</h3><p>Genera un <code>.xlsx</code> con Sí/No por lista más columnas de detalle (fecha de inclusión, sunset date, motivo…).</p></div>
+      <div class="card"><h3>Consultas en paralelo</h3><p>Las fuentes se consultan simultáneamente por host, respetando el límite de cada servidor.</p></div>
+      <div class="card"><h3>Sin instalación en Windows</h3><p>Versión portable: descomprime y ejecuta. En macOS, un <code>.dmg</code> estándar.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="count">22</span> &nbsp;listas e inventarios</h2>
+    <div class="regions">
+      <div class="region"><h3>🇪🇺 Unión Europea (ECHA)</h3><ul>
+        <li>Candidate List (SVHC)</li>
+        <li>Annex XIV — Authorisation (nuevo)</li>
+        <li>Annex XIV — Authorisation (legado)</li>
+        <li>Annex XVII — Restriction</li>
+        <li>EU REACH Registered</li></ul></div>
+      <div class="region"><h3>🇺🇸 Estados Unidos</h3><ul>
+        <li>California Proposition 65</li>
+        <li>TSCA Inventory</li>
+        <li>EPA Hazardous Air Pollutants</li>
+        <li>TSCA SNUR</li>
+        <li>TSCA § 5(e) Consent Order</li></ul></div>
+      <div class="region"><h3>🇯🇵 Japón</h3><ul>
+        <li>PDSCL — Poison (毒物)</li>
+        <li>PDSCL — Deleterious (劇物)</li>
+        <li>ENCS</li></ul></div>
+      <div class="region"><h3>🇨🇦 Canadá</h3><ul>
+        <li>Domestic Substances List (DSL)</li>
+        <li>Non-domestic Substances List (NDSL)</li></ul></div>
+      <div class="region"><h3>🌏 Asia-Pacífico y más</h3><ul>
+        <li>🇨🇳 China IECSC</li>
+        <li>🇰🇷 Korea KECL</li>
+        <li>🇹🇼 Taiwan TCSI</li>
+        <li>🇵🇭 Philippines PICCS</li>
+        <li>🇦🇺 Australia AIIC</li>
+        <li>🇳🇿 New Zealand NZIoC</li>
+        <li>🇹🇷 Turkey KKDIK</li></ul></div>
+    </div>
+    <div class="note">⚠️ Herramienta de <em>screening</em>: no sustituye la verificación
+      oficial en las fuentes regulatorias. Algunas listas (p. ej. sustancias
+      confidenciales bajo TSCA) no son consultables por CAS público.</div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    Proyecto de código abierto · <a href="https://github.com/lordmacu/echa-svhc">github.com/lordmacu/echa-svhc</a><br>
+    Construido con Flutter · Datos de ECHA, US EPA, NIHS Japón, ECCC Canadá y ChemRadar.
+  </div>
+</footer>
+
+</body>
+</html>

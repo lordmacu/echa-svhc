@@ -1,19 +1,16 @@
-# ECHA — consulta SVHC + Annex XIV por CAS
+# ECHA — Consulta regulatoria por número CAS
 
-App de escritorio (**macOS** y **Windows**) que consulta, por número **CAS**, la
-existencia de una sustancia en **tres listas de ECHA**:
-
-1. **Candidate List (SVHC)** — [`candidate-list-table`](https://www.echa.europa.eu/candidate-list-table)
-2. **Authorisation List (REACH Annex XIV) — nueva** — [`chem.echa.europa.eu/.../authorisationList`](https://chem.echa.europa.eu/obligation-lists/authorisationList) (API JSON)
-3. **Authorisation List (REACH Annex XIV) — legado** — [`authorisation-list`](https://www.echa.europa.eu/authorisation-list)
-
-Pega uno o varios CAS (los detecta automáticamente y los convierte en *chips*),
-pulsa **Consultar** y la app revisa **uno por uno** cada sustancia y muestra una
-**tabla con 3 columnas** (✓/✗ por fuente). Cada fila se expande para ver los
-detalles de cada lista: nombre, EC, fecha de inclusión / motivo (Candidate) y
-Entry No., Latest application date, Sunset date (Annex XIV).
+App de escritorio (**macOS** y **Windows**) que, dado uno o varios números **CAS**,
+verifica la presencia de cada sustancia en **22 listas e inventarios regulatorios**
+de todo el mundo, y muestra el resultado en una tabla comparativa exportable a Excel.
 
 ![estado](https://github.com/lordmacu/echa-svhc/actions/workflows/build.yml/badge.svg)
+
+![Captura de la aplicación](docs/screenshot.png)
+
+🌐 **Página del proyecto:** https://lordmacu.github.io/echa-svhc/
+
+---
 
 ## Descargas
 
@@ -27,66 +24,92 @@ En Windows, descomprime el `.zip` y ejecuta `echa_svhc.exe` (no requiere instala
 
 ---
 
+## Listas consultadas (22)
+
+**🇪🇺 Unión Europea — ECHA**
+- Candidate List (SVHC)
+- Authorisation List (REACH Annex XIV) — portal nuevo (ECHA CHEM)
+- Authorisation List (REACH Annex XIV) — portal legado
+- Restriction List (REACH Annex XVII)
+
+**🇺🇸 Estados Unidos**
+- California Proposition 65
+- TSCA Chemical Substance Inventory
+- EPA Hazardous Air Pollutants (Clean Air Act)
+- TSCA Significant New Use Rule (SNUR)
+- TSCA § 5(e) Consent Order
+
+**🇯🇵 Japón**
+- PDSCL — Poisonous substances (毒物)
+- PDSCL — Deleterious substances (劇物)
+- ENCS (Existing & New Chemical Substances)
+
+**🇨🇦 Canadá**
+- Domestic Substances List (DSL)
+- Non-domestic Substances List (NDSL)
+
+**🌏 Otros (vía ChemRadar)**
+- 🇨🇳 China IECSC · 🇰🇷 Korea KECL · 🇪🇺 EU REACH Registered · 🇹🇷 Turkey KKDIK
+- 🇵🇭 Philippines PICCS · 🇹🇼 Taiwan TCSI · 🇦🇺 Australia AIIC · 🇳🇿 New Zealand NZIoC
+
+---
+
 ## Características
 
-- **3 fuentes por CAS**: Candidate List (SVHC), Annex XIV nuevo (ECHA CHEM) y Annex XIV legado.
-- **Tabla con 3 columnas** de indicadores (✓ en lista / ✗ no / ⚠ error); cada fila se expande con el detalle por fuente.
-- **Detección automática de formato CAS** (`2–7 dígitos - 2 dígitos - 1 dígito`), incluso pegando texto/prosa que los contenga.
-- **Importar desde archivo**: carga un `.csv`, `.txt`, `.xlsx` o `.xls` y extrae automáticamente todos los CAS (de cualquier columna/hoja).
-- Entrada por **chips**: agrega, valida el dígito de control y elimina CAS fácilmente.
-- **Filtros** (solo Candidate List, como en la web): Reason for inclusion (Art. 57) y rango de fecha de inclusión.
-- Consulta **secuencial** (uno por uno) con barra de progreso.
+- **Detección automática de CAS** (`2–7 dígitos - 2 dígitos - 1 dígito`), incluso al pegar texto/prosa que los contenga; se convierten en *chips* sin duplicados.
+- **Importar desde archivo**: carga un `.csv`, `.txt`, `.xlsx` o `.xls` y extrae todos los CAS (de cualquier columna/hoja).
+- **Tabla comparativa**: una fila por CAS, una columna por lista (✓ en lista / – no / ⚠ error). Cada fila se expande con el detalle por fuente (fecha de inclusión, motivo Art. 57, Entry No., Sunset date, condiciones…).
+- **Filtros** (Candidate List): Reason for inclusion (Art. 57) y rango de fecha de inclusión.
+- **Exportar a Excel**: genera un `.xlsx` con Sí/No por lista + columnas de detalle.
+- **Consultas en paralelo**: las fuentes se agrupan por host y se consultan simultáneamente, respetando el *rate-limiting* de cada servidor.
+
+---
 
 ## Cómo funciona
 
-Cada CAS se consulta contra tres fuentes (ver [`test.md`](test.md) para el reverse-engineering completo):
+Cada lista se consulta con el método más fiable para su origen:
 
-1. **Candidate List** y **Annex XIV legado** (portal Liferay): la búsqueda real es un
-   **render GET** (`p_p_lifecycle=0`) con criterios *namespaced* + `_doSearch=true`;
-   la verdad está en el campo oculto `_total` (0 = no listado). Solo requiere cookies.
-2. **Annex XIV nuevo** (ECHA CHEM): API JSON
-   `api-obligation-list/v1/authorisationList?searchText=<cas>`.
+| Origen | Método |
+|---|---|
+| **ECHA** (Candidate, Annex XIV legado, Annex XVII) | Portal Liferay — *render GET* (`p_p_lifecycle=0`) con criterios *namespaced* + `_doSearch=true`; el campo oculto `_total` indica si está listado. |
+| **ECHA CHEM** (Annex XIV nuevo) | API JSON `api-obligation-list/v1/authorisationList?searchText=<cas>`. |
+| **EPA ChemView** (SNUR, § 5(e)) | `chemicals/search` → id → `chemicals/datatable` → se leen los códigos `SNUR` / `CO` en `sources`. |
+| **ChemRadar** (China, Korea, REACH, Turkey, PICCS, TCSI, AIIC, NZIoC, ENCS, Prop 65, TSCA, EPA HAP) | Endpoint público `es_query` por inventario. |
+| **Japón PDSCL** (NIHS) | Listas estáticas (Shift_JIS) descargadas una vez y cacheadas. |
+| **Canadá DSL/NDSL** | Inventarios **locales** (Excel incluido como asset) — búsqueda instantánea, sin red. |
 
-Por qué **escritorio** y no web: el navegador bloquearía estas peticiones por
-**CORS** (ECHA solo permite su propio dominio). Una app nativa hace peticiones
-HTTP crudas (como `curl`), sin esa restricción.
+Detalles del reverse-engineering de ECHA en [`test.md`](test.md).
+
+> **¿Por qué escritorio y no web?** Varias de estas APIs bloquearían las peticiones
+> desde un navegador por **CORS**. Una app nativa hace peticiones HTTP crudas
+> (como `curl`), sin esa restricción.
+
+---
 
 ## Desarrollo
 
 ```bash
 flutter pub get
 flutter run -d macos        # o -d windows
-```
-
-Pruebas:
-
-```bash
 flutter test
-```
-
-Prueba de humo contra ECHA real (sin GUI):
-
-```bash
-dart run tool/smoke.dart
 ```
 
 ## Builds (CI)
 
 GitHub Actions ([`.github/workflows/build.yml`](.github/workflows/build.yml))
-compila en cada push a `main` y publica como *artifacts*:
-
-- **macOS** → `echa_svhc-macos.dmg`
-- **Windows** → `echa_svhc-windows-portable.zip` (ejecutable portable + DLLs)
-
-Al crear un **tag** `vX.Y.Z` los binarios se adjuntan a un **GitHub Release**:
+compila en cada push a `main` y publica como *artifacts*. Al crear un **tag**
+`vX.Y.Z`, los binarios se adjuntan a un **GitHub Release**:
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.4.0
+git push origin v1.4.0
 ```
 
-## Nota
+---
 
-El portal usado (`www.echa.europa.eu/candidate-list-table`) es **legado**:
-ECHA lo mantiene hasta **julio 2026**. La versión nueva es el SPA
-`https://chem.echa.europa.eu/obligation-lists/candidateList`.
+## Aviso
+
+Esta herramienta es una ayuda de *screening* y no sustituye la verificación
+oficial en las fuentes regulatorias. Algunas listas (p. ej. sustancias
+confidenciales bajo TSCA) no son consultables por CAS público. El portal legado
+de ECHA se mantiene hasta **julio 2026**.
