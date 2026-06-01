@@ -1,9 +1,8 @@
 import 'dart:convert';
+import 'dart:developer' as dev;
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
-
-void _log(String msg) => debugPrint('[ECHA] $msg');
+void _log(String msg) => dev.log(msg, name: 'ECHA');
 
 /// Resultado de una consulta a la Candidate List (SVHC) de ECHA.
 class EchaResult {
@@ -33,6 +32,42 @@ class EchaResult {
 }
 
 enum EchaStatus { listed, notListed, error }
+
+/// Filtros opcionales del buscador (equivalen a los de la página de ECHA).
+class EchaQuery {
+  /// Motivo de inclusión (Art. 57). null/'' = "- All -".
+  final String? reason;
+
+  /// Rango de fecha de inclusión en formato yyyy-MM-dd. null = sin límite.
+  final String? inclusionFrom;
+  final String? inclusionTo;
+
+  const EchaQuery({this.reason, this.inclusionFrom, this.inclusionTo});
+
+  bool get isEmpty =>
+      (reason == null || reason!.isEmpty) &&
+      (inclusionFrom == null || inclusionFrom!.isEmpty) &&
+      (inclusionTo == null || inclusionTo!.isEmpty);
+
+  static const empty = EchaQuery();
+}
+
+/// Opciones del filtro "Reason for inclusion" (extraídas del formulario real).
+/// La cadena vacía representa "- All -".
+const echaReasons = <String>[
+  '', // - All -
+  'Carcinogenic (Article 57a)',
+  'Mutagenic (Article 57b)',
+  'Toxic for reproduction (Article 57c)',
+  'PBT (Article 57d)',
+  'vPvB (Article 57e)',
+  'Endocrine disrupting properties (Article 57(f) - environment)',
+  'Endocrine disrupting properties (Article 57(f) - human health)',
+  'Equivalent level of concern having probable serious effects to human health (Article 57(f) - human health)',
+  'Equivalent level of concern having probable serious effects to the environment (Article 57(f) - environment)',
+  'Respiratory sensitising properties (Article 57(f) - human health)',
+  'Specific target organ toxicity after repeated exposure (Article 57(f) - human health)',
+];
 
 /// Cliente que replica el flujo verificado en test.md:
 ///   GET página base -> extraer p_auth + formDate + cookies -> POST a la acción.
@@ -84,7 +119,7 @@ class EchaService {
   }
 
   /// Consulta un único CAS reusando una sesión ya abierta.
-  Future<EchaResult> _searchWith(_Session s, String cas) async {
+  Future<EchaResult> _searchWith(_Session s, String cas, EchaQuery q) async {
     final actionUri = Uri.parse(
       '$_base?p_p_id=$_portlet&p_p_lifecycle=1&p_p_state=normal'
       '&p_p_mode=view&${_portlet}_javax.portlet.action=searchDissLists'
@@ -94,6 +129,10 @@ class EchaService {
     final form = <String, String>{
       '${_portlet}_formDate': s.formDate,
       '${_portlet}_substance_identifier_field_key': cas,
+      // Filtros opcionales (vacío = sin filtro, como en la página real).
+      '${_portlet}_haz_detailed_concern': q.reason ?? '',
+      '${_portlet}_dte_inclusionFrom': q.inclusionFrom ?? '',
+      '${_portlet}_dte_inclusionTo': q.inclusionTo ?? '',
       '${_portlet}_deltaParamValue': '50',
       'doSearch': 'true',
     };
@@ -121,19 +160,35 @@ class EchaService {
     _log('search "$cas": status=${res.statusCode} bodyLen=${body.length} '
         'ocurrenciasCAS=$hits tieneWAF=$waf');
 
-    final result = _parse(cas, body);
+    final result = _parse(cas, body, res.statusCode, q);
     _log('search "$cas": -> ${result.status} name=${result.name}');
     return result;
   }
 
   /// Parsea el HTML de resultados y busca la fila que contenga el CAS.
-  EchaResult _parse(String cas, String html) {
+  /// El servidor ignora los filtros cuando se busca por CAS, así que se
+  /// aplican aquí del lado del cliente sobre la fila encontrada.
+  EchaResult _parse(String cas, String html, int statusCode, EchaQuery q) {
     // Detección de WAF real (no el 403 falso).
     if (html.contains('Azure WAF') || html.contains('Web Application Firewall')) {
       return EchaResult(
         cas: cas,
         status: EchaStatus.error,
         error: 'Bloqueado por WAF (sesión inválida o caducada).',
+      );
+    }
+
+    // Respuesta inválida (502/503 gateway, página de error, body truncado…):
+    // NO debe reportarse como "no está en la lista" (sería un falso negativo).
+    // Una página de resultados legítima siempre incluye el formulario del portlet.
+    final isResultsPage =
+        html.contains('substance_identifier_field_key') && html.length > 50000;
+    if (statusCode >= 500 || !isResultsPage) {
+      return EchaResult(
+        cas: cas,
+        status: EchaStatus.error,
+        error: 'Respuesta inválida del servidor (HTTP $statusCode, '
+            '${html.length} bytes). Reintentar.',
       );
     }
 
@@ -145,11 +200,11 @@ class EchaService {
           .where((c) => c.isNotEmpty)
           .toList();
 
-      if (cells.any((c) => c.contains(cas))) {
+      if (cells.any((c) => _cellHasCas(c, cas))) {
         // Columnas esperadas (test.md):
         // nombre | EC number | CAS | fecha inclusión | motivo | nº decisión | detalle
         String? at(int i) => i < cells.length ? cells[i] : null;
-        return EchaResult(
+        final result = EchaResult(
           cas: cas,
           status: EchaStatus.listed,
           name: at(0),
@@ -158,10 +213,64 @@ class EchaService {
           reason: at(4),
           decisionNumber: at(5),
         );
+
+        // Filtrado del lado del cliente (el servidor lo ignora por CAS).
+        if (!_passesFilter(result, q)) {
+          _log('search "$cas": fila encontrada pero excluida por filtros');
+          return EchaResult(cas: cas, status: EchaStatus.notListed);
+        }
+        return result;
       }
     }
 
     return EchaResult(cas: cas, status: EchaStatus.notListed);
+  }
+
+  /// Comprueba si la fila encontrada cumple los filtros de reason y fecha.
+  bool _passesFilter(EchaResult r, EchaQuery q) {
+    if (q.isEmpty) return true;
+
+    // Reason: comparación por contención (la celda puede traer texto extra).
+    if (q.reason != null && q.reason!.isNotEmpty) {
+      final rowReason = r.reason ?? '';
+      if (!rowReason.contains(q.reason!)) return false;
+    }
+
+    // Fecha de inclusión: parsear "dd-MMM-yyyy" y comparar con el rango.
+    final date = _parseInclusionDate(r.inclusionDate);
+    if (q.inclusionFrom != null && q.inclusionFrom!.isNotEmpty) {
+      final from = DateTime.tryParse(q.inclusionFrom!);
+      if (from != null && (date == null || date.isBefore(from))) return false;
+    }
+    if (q.inclusionTo != null && q.inclusionTo!.isNotEmpty) {
+      final to = DateTime.tryParse(q.inclusionTo!);
+      if (to != null && (date == null || date.isAfter(to))) return false;
+    }
+    return true;
+  }
+
+  static const _months = {
+    'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+    'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
+  };
+
+  /// Convierte "04-Feb-2026" a DateTime. null si no parsea.
+  DateTime? _parseInclusionDate(String? s) {
+    if (s == null) return null;
+    final m = RegExp(r'(\d{1,2})-([A-Za-z]{3})-(\d{4})').firstMatch(s);
+    if (m == null) return null;
+    final day = int.tryParse(m.group(1)!);
+    final month = _months[m.group(2)!.toLowerCase()];
+    final year = int.tryParse(m.group(3)!);
+    if (day == null || month == null || year == null) return null;
+    return DateTime(year, month, day);
+  }
+
+  /// True si la celda contiene el CAS como número completo (no como subcadena
+  /// de otro CAS). Ej: "7440-43-9" no debe coincidir dentro de "17440-43-9".
+  bool _cellHasCas(String cell, String cas) {
+    final re = RegExp(r'(?<![\d-])' + RegExp.escape(cas) + r'(?![\d-])');
+    return re.hasMatch(cell);
   }
 
   /// Quita etiquetas HTML, decodifica entidades y colapsa espacios.
@@ -185,6 +294,7 @@ class EchaService {
   /// Si una consulta falla por token caducado, reabre sesión y reintenta una vez.
   Future<void> searchMany(
     List<String> casList, {
+    EchaQuery query = EchaQuery.empty,
     required void Function(int index, EchaResult result) onResult,
   }) async {
     _Session? session;
@@ -192,12 +302,14 @@ class EchaService {
       final cas = casList[i];
       try {
         session ??= await _openSession();
-        var result = await _searchWith(session, cas);
+        var result = await _searchWith(session, cas, query);
 
-        // Reintento único si el WAF tumbó la sesión.
+        // Reintento con sesión fresca si hubo WAF o respuesta inválida
+        // (502/503, body truncado): así un fallo transitorio no se reporta
+        // como "no está en la lista".
         if (result.status == EchaStatus.error) {
           session = await _openSession();
-          result = await _searchWith(session, cas);
+          result = await _searchWith(session, cas, query);
         }
         onResult(i, result);
       } catch (e) {
@@ -207,6 +319,11 @@ class EchaService {
           i,
           EchaResult(cas: cas, status: EchaStatus.error, error: e.toString()),
         );
+      }
+
+      // Pausa de cortesía entre consultas para no disparar el WAF/throttling.
+      if (i < casList.length - 1) {
+        await Future<void>.delayed(const Duration(milliseconds: 250));
       }
     }
   }

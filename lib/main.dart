@@ -46,6 +46,16 @@ class _HomePageState extends State<HomePage> {
   bool _running = false;
   int _currentIndex = -1;
 
+  // Filtros (como en la página de ECHA). Defaults: reason = All, fechas vacías.
+  String _reason = ''; // '' = - All -
+  DateTime? _from;
+  DateTime? _to;
+
+  static String _fmt(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+
   @override
   void dispose() {
     _controller.dispose();
@@ -139,6 +149,11 @@ class _HomePageState extends State<HomePage> {
 
     await _service.searchMany(
       List<String>.from(_casList),
+      query: EchaQuery(
+        reason: _reason,
+        inclusionFrom: _from == null ? null : _fmt(_from!),
+        inclusionTo: _to == null ? null : _fmt(_to!),
+      ),
       onResult: (index, result) {
         setState(() {
           _currentIndex = index;
@@ -178,6 +193,8 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 12),
             _buildInput(theme),
+            const SizedBox(height: 12),
+            _buildFilters(theme),
             const SizedBox(height: 12),
             if (_casList.isNotEmpty) _buildChips(theme),
             const SizedBox(height: 12),
@@ -229,6 +246,62 @@ class _HomePageState extends State<HomePage> {
               label: const Text('Importar CSV/Excel'),
             ),
           ],
+        ),
+      ],
+    );
+  }
+
+  /// Filtros opcionales: Reason for inclusion (default "- All -") y rango de
+  /// fecha de inclusión (from/to, vacíos por defecto). Igual que la página ECHA.
+  Widget _buildFilters(ThemeData theme) {
+    String reasonLabel(String r) => r.isEmpty ? '- All -' : r;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          flex: 2,
+          child: DropdownButtonFormField<String>(
+            initialValue: _reason,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              labelText: 'Reason for inclusion',
+              isDense: true,
+            ),
+            items: [
+              for (final r in echaReasons)
+                DropdownMenuItem(
+                  value: r,
+                  child: Text(
+                    reasonLabel(r),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+            ],
+            onChanged: _running
+                ? null
+                : (v) => setState(() => _reason = v ?? ''),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _DateField(
+            label: 'Inclusion from',
+            value: _from,
+            enabled: !_running,
+            onPick: (d) => setState(() => _from = d),
+            fmt: _fmt,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _DateField(
+            label: 'Inclusion to',
+            value: _to,
+            enabled: !_running,
+            onPick: (d) => setState(() => _to = d),
+            fmt: _fmt,
+          ),
         ),
       ],
     );
@@ -384,6 +457,63 @@ class _ResultTile extends StatelessWidget {
           style: TextStyle(fontWeight: FontWeight.w600, color: color)),
       subtitle: subtitle,
       isThreeLine: r?.status == EchaStatus.listed,
+    );
+  }
+}
+
+/// Campo de fecha de solo lectura que abre un date picker al pulsarlo.
+/// Muestra un botón para limpiar la fecha (volver a "vacío").
+class _DateField extends StatelessWidget {
+  final String label;
+  final DateTime? value;
+  final bool enabled;
+  final ValueChanged<DateTime?> onPick;
+  final String Function(DateTime) fmt;
+
+  const _DateField({
+    required this.label,
+    required this.value,
+    required this.enabled,
+    required this.onPick,
+    required this.fmt,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: enabled
+          ? () async {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: value ?? DateTime.now(),
+                firstDate: DateTime(2008),
+                lastDate: DateTime(2100),
+              );
+              if (picked != null) onPick(picked);
+            }
+          : null,
+      child: InputDecorator(
+        decoration: InputDecoration(
+          border: const OutlineInputBorder(),
+          labelText: label,
+          isDense: true,
+          suffixIcon: value == null
+              ? const Icon(Icons.calendar_today, size: 18)
+              : IconButton(
+                  icon: const Icon(Icons.clear, size: 18),
+                  onPressed: enabled ? () => onPick(null) : null,
+                  tooltip: 'Limpiar',
+                ),
+        ),
+        child: Text(
+          value == null ? '—' : fmt(value!),
+          style: TextStyle(
+            color: value == null
+                ? Theme.of(context).hintColor
+                : Theme.of(context).textTheme.bodyLarge?.color,
+          ),
+        ),
+      ),
     );
   }
 }
