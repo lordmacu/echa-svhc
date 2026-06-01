@@ -5,7 +5,21 @@ very high concern** de ECHA. Caso de prueba: **CAS 110-54-3 (n-hexano)**.
 
 ---
 
-## TL;DR
+## ⚠️ CORRECCIÓN IMPORTANTE (método POST de acción NO filtra)
+
+> El método original de abajo (POST a `p_p_lifecycle=1`) **NO busca**: devuelve
+> SIEMPRE las **50 sustancias más recientes** ordenadas por fecha desc, ignorando
+> el CAS enviado. El n-hexano "funcionaba" solo porque es la #1 más reciente.
+> Cualquier CAS fuera del top-50 (p. ej. DEHP `117-81-7` o cadmio `7440-43-9`)
+> daba **falso negativo**.
+>
+> **El método correcto es un render GET** (`p_p_lifecycle=0`) con los criterios
+> como parámetros *namespaced* + `_doSearch=true`. El nº de coincidencias se lee
+> del campo oculto `_disslists_WAR_disslistsportlet_total` (0 = no listado).
+> Esto además hace que los filtros **reason** y **fecha** funcionen server-side.
+> Ver sección **"Método correcto (render GET)"** más abajo.
+
+## TL;DR (método de acción — quedó obsoleto, ver corrección arriba)
 
 Sí se puede con `curl`. El patrón es **GET a la página base → extraer token + cookies → POST a la acción**:
 
@@ -175,6 +189,60 @@ webtools/EAMS (403, ruido)
                         └─> página BASE (200, sin WAF, da token+cookies)
                                └─> POST acción con token+cookies -> body con resultados (ignorar 403)
 ```
+
+---
+
+## Método correcto (render GET) — el que SÍ filtra
+
+El portlet Liferay lee los criterios de búsqueda en la fase **render**
+(`p_p_lifecycle=0`), no en la acción. Los parámetros van *namespaced* en la
+query string y hay que incluir `_doSearch=true`. Solo se necesitan **cookies**
+(no `p_auth`).
+
+```bash
+#!/usr/bin/env bash
+# uso: ./echa.sh "117-81-7"   (DEHP, listado en 2008)
+CAS="${1:-110-54-3}"
+UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"
+P="_disslists_WAR_disslistsportlet"
+BASE="https://www.echa.europa.eu/web/guest/candidate-list-table"
+JAR=$(mktemp)
+
+# 1) GET base -> solo para las cookies de sesión
+curl -s -c "$JAR" -A "$UA" "$BASE" -o /dev/null
+
+# 2) RENDER GET con criterios namespaced + _doSearch=true
+URL="$BASE?p_p_id=disslists_WAR_disslistsportlet&p_p_lifecycle=0&p_p_state=normal&p_p_mode=view"
+URL="$URL&${P}_haz_detailed_concern=&${P}_orderByCol=dte_inclusion&${P}_orderByType=desc"
+URL="$URL&${P}_dte_inclusionFrom=&${P}_dte_inclusionTo=&${P}_doSearch=true"
+URL="$URL&${P}_deltaParamValue=50&${P}_resetCur=false&${P}_delta=50&${P}_cur=1"
+curl -s -G -b "$JAR" -A "$UA" -H "Referer: $BASE" \
+  --data-urlencode "${P}_substance_identifier_field_key=${CAS}" \
+  "$URL" > result.html
+
+# 3) el nº de coincidencias está en el campo oculto _total (0 = NO listado)
+grep -o "${P}_total\"[^>]*value=\"[0-9]*\"" result.html
+```
+
+### Señal de verdad: campo `_total`
+
+```
+<input ... name="_disslists_WAR_disslistsportlet_total" ... value="1" />   -> listado
+                                                              value="0"     -> NO listado
+```
+
+Verificado (mayo 2026): `110-54-3`→1, `117-81-7`→1, `7440-43-9`→1,
+`50-00-0`→0, `64-17-5`→0.
+
+### Filtros (ahora sí server-side)
+
+| Parámetro (namespaced) | Valor |
+|---|---|
+| `_haz_detailed_concern` | motivo exacto (Art. 57), vacío = `- All -` |
+| `_dte_inclusionFrom` / `_dte_inclusionTo` | fecha en formato **`dd-MMM-yyyy`** (p. ej. `01-Mar-2026`); vacío = sin límite |
+
+Probado: `110-54-3` + `reason=Carcinogenic` → `_total=0`;
+`110-54-3` + `from=01-Mar-2026` → `_total=0` (su inclusión es 04-Feb-2026).
 
 ---
 
