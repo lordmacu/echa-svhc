@@ -20,3 +20,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/canada_dsl_cas.txt
+    - assets/canada_ndsl_cas.txt

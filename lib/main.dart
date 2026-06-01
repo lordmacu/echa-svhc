@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'cas_importer.dart';
 import 'cas_utils.dart';
 import 'echa_service.dart';
+import 'excel_export.dart';
 
 void main() {
   runApp(const EchaApp());
@@ -137,6 +138,22 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  Future<void> _exportExcel() async {
+    try {
+      final path = await ExcelExport.export(_casList, _results);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(path == null
+            ? 'Exportación cancelada.'
+            : 'Guardado en: $path'),
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Error al exportar: $e')));
+    }
+  }
+
   Future<void> _run() async {
     _addFromField(); // por si quedó algo escrito sin separador
     if (_casList.isEmpty || _running) return;
@@ -178,7 +195,7 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ECHA — SVHC + Annex XIV por CAS'),
+        title: const Text('ECHA — SVHC + Annex XIV + XVII por CAS'),
         backgroundColor: theme.colorScheme.inversePrimary,
       ),
       body: Padding(
@@ -188,8 +205,9 @@ class _HomePageState extends State<HomePage> {
           children: [
             Text(
               'Pega uno o varios números CAS (se detectan automáticamente). '
-              'Se consultan 3 fuentes de ECHA: Candidate List (SVHC), '
-              'Annex XIV nuevo (ECHA CHEM) y Annex XIV legado. Ej: 110-54-3',
+              'Se consultan 7 fuentes: ECHA (Candidate List, Annex XIV '
+              'nuevo/legado, Annex XVII) y US (California Prop 65, TSCA, '
+              'EPA HAP). Ej: 110-54-3',
               style: theme.textTheme.bodyMedium,
             ),
             const SizedBox(height: 12),
@@ -375,6 +393,13 @@ class _HomePageState extends State<HomePage> {
           icon: const Icon(Icons.clear_all),
           label: const Text('Limpiar'),
         ),
+        const SizedBox(width: 12),
+        OutlinedButton.icon(
+          onPressed:
+              (_running || _results.isEmpty) ? null : _exportExcel,
+          icon: const Icon(Icons.file_download),
+          label: const Text('Exportar a Excel'),
+        ),
         const Spacer(),
         if (total > 0)
           Text('${_casList.length} CAS', style: theme.textTheme.labelLarge),
@@ -392,35 +417,46 @@ class _HomePageState extends State<HomePage> {
         ),
       );
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const _ResultHeader(),
-        const Divider(height: 1),
-        Expanded(
-          child: ListView.separated(
-            itemCount: _casList.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
-            itemBuilder: (context, i) {
-              final cas = _casList[i];
-              final report = _results[cas];
-              final isCurrent = _running && i == _currentIndex;
-              return _ResultRow(
-                cas: cas,
-                report: report,
-                isCurrent: isCurrent,
-              );
-            },
-          ),
+    // Tabla ancha (7 fuentes): scroll horizontal con ancho fijo.
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: SizedBox(
+        width: _kTableWidth,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const _ResultHeader(),
+            const Divider(height: 1),
+            Expanded(
+              child: ListView.separated(
+                itemCount: _casList.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (context, i) {
+                  final cas = _casList[i];
+                  final report = _results[cas];
+                  final isCurrent = _running && i == _currentIndex;
+                  return _ResultRow(
+                    cas: cas,
+                    report: report,
+                    isCurrent: isCurrent,
+                  );
+                },
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
 
 /// Anchos de columna compartidos entre el header y cada fila.
-const double _kCasWidth = 110;
-const double _kSourceWidth = 116;
+const double _kCasWidth = 96;
+const double _kSourceWidth = 78;
+const double _kNameWidth = 220;
+// Ancho total de la tabla (CAS + N fuentes + nombre + padding horizontal 4+4).
+double get _kTableWidth =>
+    _kCasWidth + EchaSource.values.length * _kSourceWidth + _kNameWidth + 8;
 
 class _ResultHeader extends StatelessWidget {
   const _ResultHeader();
@@ -439,16 +475,16 @@ class _ResultHeader extends StatelessWidget {
         children: [
           SizedBox(width: _kCasWidth, child: Text('CAS', style: style)),
           for (final s in EchaSource.values) cell(s.shortLabel, _kSourceWidth),
-          const SizedBox(width: 8),
-          Expanded(child: Text('Detalle', style: style)),
+          SizedBox(width: _kNameWidth, child: Text('Nombre', style: style)),
         ],
       ),
     );
   }
 }
 
-/// Una fila de la tabla: CAS + 3 indicadores + detalle expandible.
-class _ResultRow extends StatelessWidget {
+/// Una fila de la tabla: CAS + indicadores por fuente + nombre.
+/// Al tocarla se expande mostrando el detalle de cada fuente.
+class _ResultRow extends StatefulWidget {
   final String cas;
   final CasReport? report;
   final bool isCurrent;
@@ -460,14 +496,22 @@ class _ResultRow extends StatelessWidget {
   });
 
   @override
+  State<_ResultRow> createState() => _ResultRowState();
+}
+
+class _ResultRowState extends State<_ResultRow> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final report = widget.report;
 
     Widget indicator(EchaSource s) {
       final r = report?[s];
       final Widget icon;
       if (report == null) {
-        icon = isCurrent
+        icon = widget.isCurrent
             ? const SizedBox(
                 width: 16, height: 16,
                 child: CircularProgressIndicator(strokeWidth: 2))
@@ -492,50 +536,73 @@ class _ResultRow extends StatelessWidget {
       );
     }
 
-    final summaryRow = Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-      child: Row(
-        children: [
-          SizedBox(
-            width: _kCasWidth,
-            child: Text(cas,
-                style: const TextStyle(fontWeight: FontWeight.w600)),
-          ),
-          for (final s in EchaSource.values) indicator(s),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              _detailSummary(),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall,
+    final canExpand = report != null;
+    final summaryRow = InkWell(
+      onTap: canExpand ? () => setState(() => _expanded = !_expanded) : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        child: Row(
+          children: [
+            SizedBox(
+              width: _kCasWidth,
+              child: Row(
+                children: [
+                  if (canExpand)
+                    Icon(
+                      _expanded ? Icons.expand_more : Icons.chevron_right,
+                      size: 16,
+                      color: theme.hintColor,
+                    ),
+                  Expanded(
+                    child: Text(widget.cas,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+            for (final s in EchaSource.values) indicator(s),
+            SizedBox(
+              width: _kNameWidth,
+              child: Text(
+                _detailSummary(),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+          ],
+        ),
       ),
     );
 
-    // Si hay reporte, permitir expandir para ver detalle por fuente.
-    if (report == null) return summaryRow;
-    return Theme(
-      data: theme.copyWith(dividerColor: Colors.transparent),
-      child: ExpansionTile(
-        tilePadding: const EdgeInsets.symmetric(horizontal: 4),
-        title: summaryRow,
-        childrenPadding: const EdgeInsets.fromLTRB(24, 0, 16, 12),
-        children: [
-          for (final s in EchaSource.values) _SourceDetail(result: report![s]!),
-        ],
-      ),
+    if (!canExpand || !_expanded) return summaryRow;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        summaryRow,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 16, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final s in EchaSource.values)
+                _SourceDetail(result: report[s]!),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
   String _detailSummary() {
-    final r = report;
-    if (r == null) return isCurrent ? 'Consultando…' : 'En cola';
+    final r = widget.report;
+    if (r == null) return widget.isCurrent ? 'Consultando…' : 'En cola';
     final name = r[EchaSource.candidate]?.name ??
         r[EchaSource.authNew]?.name ??
-        r[EchaSource.authLegacy]?.name;
+        r[EchaSource.authLegacy]?.name ??
+        r[EchaSource.tsca]?.name ??
+        r[EchaSource.prop65]?.name;
     final inLists = EchaSource.values
         .where((s) => r[s]?.status == EchaStatus.listed)
         .map((s) => s.shortLabel)
